@@ -1,0 +1,35 @@
+# Loqa Hub - Code Owners
+# These owners will be requested for review when PRs modify these files
+
+# Global ownership - all files require review
+* @annabarnes1138
+
+# Core service components
+/cmd/ @annabarnes1138
+/internal/ @annabarnes1138
+
+# gRPC service definitions  
+/internal/grpc/ @annabarnes1138
+
+# AI/ML integration components
+/internal/llm/ @annabarnes1138
+
+# Messaging and event handling
+/internal/messaging/ @annabarnes1138
+
+# Configuration and deployment
+/deployments/ @annabarnes1138
+/docker-compose.yml @annabarnes1138
+Dockerfile* @annabarnes1138
+
+# CI/CD and automation
+/.github/ @annabarnes1138
+/tools/ @annabarnes1138
+
+# Go module dependencies
+go.mod @annabarnes1138
+go.sum @annabarnes1138
+
+# Documentation
+README.md @annabarnes1138
+*.md @annabarnes1138

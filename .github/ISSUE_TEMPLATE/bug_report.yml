@@ -1,0 +1,80 @@
+name: Bug Report
+description: File a bug report to help us improve Loqa Hub
+title: "[Bug]: "
+labels: ["bug", "triage"]
+assignees:
+  - annabarnes1138
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us, what did you expect to happen?
+      placeholder: Tell us what you see!
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component is affected?
+      options:
+        - gRPC Audio Service
+        - Whisper STT Integration
+        - LLM Command Parser
+        - NATS Messaging
+        - HTTP API
+        - Docker Deployment
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Please copy and paste any relevant log output. This will be automatically formatted into code, so no need for backticks.
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: What version of Loqa Hub are you running?
+      placeholder: ex. v0.1.0, main branch, commit hash
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Please provide details about your environment:
+        - OS (Linux, macOS, Windows)
+        - Docker version
+        - Go version (if running from source)
+        - Hardware specs (CPU, RAM)
+      placeholder: |
+        OS: Ubuntu 22.04
+        Docker: 24.0.0
+        Go: 1.21.0
+        Hardware: 8 cores, 16GB RAM
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/loqalabs/loqa-docs/blob/main/CODE_OF_CONDUCT.md)
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true
