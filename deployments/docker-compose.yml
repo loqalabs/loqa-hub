@@ -1,0 +1,81 @@
+services:
+  nats:
+    image: nats:latest
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  loqa-hub:
+    build: 
+      context: ../
+      dockerfile: deployments/Dockerfile.hub
+    ports:
+      - "3000:3000"
+      - "50051:50051"
+    environment:
+      - LOQA_HOST=0.0.0.0
+      - LOQA_PORT=3000
+      - LOQA_GRPC_PORT=50051
+      - WHISPER_MODEL_PATH=/models/ggml-base.en.bin
+      - WHISPER_LANGUAGE=en
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2:3b
+      - NATS_URL=nats://nats:4222
+      - NATS_SUBJECT=loqa.commands
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    volumes:
+      - hub-logs:/app/logs
+      - whisper-models:/models
+    restart: unless-stopped
+    depends_on:
+      - nats
+      - ollama
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  device-service:
+    build:
+      context: ../
+      dockerfile: deployments/Dockerfile.device-service
+    environment:
+      - NATS_URL=nats://nats:4222
+    restart: unless-stopped
+    depends_on:
+      - nats
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "device-service"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  hub-logs:
+  ollama-data:
+  whisper-models:

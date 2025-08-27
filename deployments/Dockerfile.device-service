@@ -1,0 +1,39 @@
+FROM golang:1.24-alpine AS builder
+
+# Install basic tools
+RUN apk add --no-cache git
+
+# Set working directory
+WORKDIR /app
+
+# Copy proto module first
+COPY proto ./proto
+WORKDIR /app/proto/go
+RUN go mod download
+
+# Copy hub module (contains device service)
+WORKDIR /app
+COPY hub/loqa-hub ./hub/loqa-hub
+WORKDIR /app/hub/loqa-hub
+RUN go mod download
+
+# Build the device service
+RUN go build -o device-service ./cmd/device-service
+
+# Runtime stage
+FROM alpine:latest
+
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates
+
+# Create app directory
+WORKDIR /app
+
+# Copy binary
+COPY --from=builder /app/hub/loqa-hub/device-service .
+
+# Set environment variables
+ENV NATS_URL=nats://nats:4222
+
+# Run the device service
+CMD ["./device-service"]
