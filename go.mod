@@ -4,9 +4,9 @@ go 1.24
 
 require (
 	github.com/ggerganov/whisper.cpp/bindings/go v0.0.0-20250818173045-fc45bb86251f
+	github.com/loqalabs/loqa-proto/go v0.0.0-00010101000000-000000000000
 	github.com/nats-io/nats.go v1.45.0
 	google.golang.org/grpc v1.65.0
-	github.com/loqalabs/loqa-proto/go v0.0.0-00010101000000-000000000000
 )
 
 replace github.com/loqalabs/loqa-proto/go => ../loqa-proto/go
