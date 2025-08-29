@@ -28,8 +28,8 @@ services:
 
   loqa-hub:
     build: 
-      context: ../
-      dockerfile: deployments/Dockerfile.hub
+      context: ../../
+      dockerfile: loqa-hub/Dockerfile
     ports:
       - "3000:3000"
       - "50051:50051"
@@ -61,8 +61,8 @@ services:
 
   device-service:
     build:
-      context: ../
-      dockerfile: deployments/Dockerfile.device-service
+      context: ../../
+      dockerfile: loqa-device-service/Dockerfile
     environment:
       - NATS_URL=nats://nats:4222
     restart: unless-stopped
