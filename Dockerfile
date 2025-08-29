@@ -62,9 +62,8 @@ WORKDIR /app
 # Copy binary
 COPY --from=go-builder /app/loqa-hub .
 
-# Copy whisper.cpp libraries
-COPY --from=whisper-builder /tmp/whisper.cpp/libwhisper.so /usr/local/lib/ || true
-COPY --from=whisper-builder /tmp/whisper.cpp/libwhisper.a /usr/local/lib/ || true
+# Copy whisper.cpp libraries (if they exist)
+COPY --from=whisper-builder /tmp/whisper.cpp/libwhisper.* /usr/local/lib/
 
 # Set library path
 ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
