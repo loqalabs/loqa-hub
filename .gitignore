@@ -1,0 +1,82 @@
+# Loqa Hub .gitignore
+
+# Build artifacts
+bin/
+build/
+dist/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+go.work
+go.work.sum
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Whisper models and data
+whisper-models/
+models/
+*.bin
+*.gguf
+*.pt
+*.pth
+
+# Audio files (except samples)
+*.wav
+*.mp3
+*.flac
+*.ogg
+!samples/
+!fixtures/
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# Docker
+docker-compose.override.yml
+
+# Certificates and keys
+*.pem
+*.key
+*.crt
+*.p12
+
+# Local config overrides
+config.local.yml
