@@ -65,7 +65,7 @@ body:
       placeholder: |
         OS: Ubuntu 22.04
         Docker: 24.0.0
-        Go: 1.21.0
+        Go: 1.24.0
         Hardware: 8 cores, 16GB RAM
     validations:
       required: true

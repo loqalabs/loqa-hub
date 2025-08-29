@@ -1,6 +1,6 @@
 module github.com/loqa-voice-assistant/tests/integration
 
-go 1.21
+go 1.24
 
 require (
 	github.com/loqa-voice-assistant/proto/go v0.0.0
