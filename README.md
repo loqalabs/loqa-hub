@@ -24,7 +24,7 @@ The Hub service acts as the central nervous system of the Loqa platform, orchest
 
 ## Getting Started
 
-See the main [Loqa documentation](https://github.com/loqalabs/loqa-docs) for setup and usage instructions.
+See the main [Loqa documentation](https://github.com/loqalabs/loqa) for setup and usage instructions.
 
 ## License
 

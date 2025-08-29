@@ -65,4 +65,4 @@ Any special deployment considerations or steps required for this change.
 
 ---
 
-By submitting this PR, I confirm that I have read and agree to follow the [Code of Conduct](https://github.com/loqalabs/loqa-docs/blob/main/CODE_OF_CONDUCT.md) and [Contributing Guidelines](https://github.com/loqalabs/loqa-docs/blob/main/CONTRIBUTING.md).
+By submitting this PR, I confirm that I have read and agree to follow the [Code of Conduct](https://github.com/loqalabs/loqa/blob/main/CODE_OF_CONDUCT.md) and [Contributing Guidelines](https://github.com/loqalabs/loqa/blob/main/CONTRIBUTING.md).
