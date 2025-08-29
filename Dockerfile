@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine AS whisper-builder
+FROM golang:1.24-alpine AS whisper-builder
 
 # Install build dependencies
 RUN apk add --no-cache \
@@ -13,13 +13,12 @@ RUN git clone https://github.com/ggerganov/whisper.cpp.git
 WORKDIR /tmp/whisper.cpp
 RUN make
 
-# Install headers and libraries
+# Install headers and libraries - copy all available headers
 RUN mkdir -p /tmp/whisper.cpp/include && \
-    cp *.h /tmp/whisper.cpp/include/ && \
-    cp ggml/include/*.h /tmp/whisper.cpp/include/ || true
+    find /tmp/whisper.cpp -name "*.h" -type f -exec cp {} /tmp/whisper.cpp/include/ \;
 
 # Go builder stage
-FROM golang:1.21-alpine AS go-builder
+FROM golang:1.24-alpine AS go-builder
 
 # Install basic tools
 RUN apk add --no-cache git build-base
