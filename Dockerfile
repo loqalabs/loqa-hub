@@ -12,12 +12,12 @@ WORKDIR /tmp
 RUN git clone https://github.com/ggerganov/whisper.cpp.git
 WORKDIR /tmp/whisper.cpp
 
-# Build static libraries
-RUN make libwhisper.a
+# Build whisper.cpp (creates libwhisper.a automatically)
+RUN make
 
-# Create lib directory and install libraries
+# Create lib directory and copy built libraries
 RUN mkdir -p /tmp/whisper.cpp/lib && \
-    cp libwhisper.a /tmp/whisper.cpp/lib/ && \
+    find . -name "*.a" -exec cp {} /tmp/whisper.cpp/lib/ \; && \
     ls -la /tmp/whisper.cpp/lib/
 
 # Install headers
