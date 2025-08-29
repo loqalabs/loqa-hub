@@ -80,7 +80,7 @@ jobs:
         go build -v -ldflags="-w -s" -o bin/loqa-hub ./cmd
 
     - name: Upload binary artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: loqa-hub-binary
         path: bin/loqa-hub
