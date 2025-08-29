@@ -11,9 +11,16 @@ RUN apk add --no-cache \
 WORKDIR /tmp
 RUN git clone https://github.com/ggerganov/whisper.cpp.git
 WORKDIR /tmp/whisper.cpp
-RUN make
 
-# Install headers and libraries - copy all available headers
+# Build static libraries
+RUN make libwhisper.a
+
+# Create lib directory and install libraries
+RUN mkdir -p /tmp/whisper.cpp/lib && \
+    cp libwhisper.a /tmp/whisper.cpp/lib/ && \
+    ls -la /tmp/whisper.cpp/lib/
+
+# Install headers
 RUN mkdir -p /tmp/whisper.cpp/include && \
     find /tmp/whisper.cpp -name "*.h" -type f -exec cp {} /tmp/whisper.cpp/include/ \;
 
@@ -26,7 +33,7 @@ RUN apk add --no-cache git build-base
 # Set CGO flags for whisper.cpp
 ENV CGO_ENABLED=1
 ENV CGO_CFLAGS="-I/tmp/whisper.cpp/include"
-ENV CGO_LDFLAGS="-L/tmp/whisper.cpp -lwhisper -lm -lstdc++"
+ENV CGO_LDFLAGS="-L/tmp/whisper.cpp/lib -lwhisper -lm -lstdc++"
 
 # Copy whisper.cpp from builder
 COPY --from=whisper-builder /tmp/whisper.cpp /tmp/whisper.cpp
@@ -61,8 +68,8 @@ WORKDIR /app
 # Copy binary
 COPY --from=go-builder /app/loqa-hub .
 
-# Copy whisper.cpp libraries (if they exist)
-COPY --from=whisper-builder /tmp/whisper.cpp/libwhisper.* /usr/local/lib/
+# Copy whisper.cpp libraries 
+COPY --from=whisper-builder /tmp/whisper.cpp/lib/ /usr/local/lib/
 
 # Set library path
 ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
