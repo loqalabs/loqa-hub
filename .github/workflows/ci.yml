@@ -47,6 +47,9 @@ jobs:
         go-version: '1.24.3'
         cache-dependency-path: 'loqa-hub/go.sum'
 
+    - name: Verify Go version
+      run: go version
+
     - name: Download dependencies
       run: go mod download
       working-directory: loqa-hub
@@ -69,10 +72,10 @@ jobs:
       working-directory: loqa-hub
 
     - name: Run staticcheck
-      uses: dominikh/staticcheck-action@v1.3.0
-      with:
-        version: "2023.1.6"
-        working-directory: loqa-hub
+      run: |
+        go install honnef.co/go/tools/cmd/staticcheck@latest
+        staticcheck ./...
+      working-directory: loqa-hub
 
   build:
     name: Build
@@ -96,6 +99,9 @@ jobs:
       with:
         go-version: '1.24.3'
         cache-dependency-path: 'loqa-hub/go.sum'
+
+    - name: Verify Go version
+      run: go version
 
     - name: Build binary (without whisper for CI)
       run: |
