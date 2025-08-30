@@ -134,7 +134,7 @@ func (cp *CommandParser) queryOllama(prompt string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Ollama API returned status %d", resp.StatusCode)
+		return "", fmt.Errorf("ollama API returned status %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -197,7 +197,7 @@ func (cp *CommandParser) TestConnection() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Ollama API returned status %d", resp.StatusCode)
+		return fmt.Errorf("ollama API returned status %d", resp.StatusCode)
 	}
 
 	// Test model availability with a simple query
