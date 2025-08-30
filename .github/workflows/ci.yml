@@ -97,7 +97,7 @@ jobs:
         go-version: '1.24'
         cache-dependency-path: 'loqa-hub/go.sum'
 
-    - name: Build binary
+    - name: Build binary (without whisper for CI)
       run: |
         go build -v -ldflags="-w -s" -o bin/loqa-hub ./cmd
       working-directory: loqa-hub

@@ -39,8 +39,8 @@ RUN go mod download
 
 # Copy is already done above
 
-# Build the hub service
-RUN go build -o loqa-hub ./cmd
+# Build the hub service with whisper support
+RUN go build -tags whisper -o loqa-hub ./cmd
 
 # Runtime stage
 FROM alpine:latest
