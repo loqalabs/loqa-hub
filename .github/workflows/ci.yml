@@ -42,9 +42,9 @@ jobs:
         path: loqa-proto
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
-        go-version: '1.24'
+        go-version: '1.24.3'
         cache-dependency-path: 'loqa-hub/go.sum'
 
     - name: Download dependencies
@@ -92,9 +92,9 @@ jobs:
         path: loqa-proto
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
-        go-version: '1.24'
+        go-version: '1.24.3'
         cache-dependency-path: 'loqa-hub/go.sum'
 
     - name: Build binary (without whisper for CI)
