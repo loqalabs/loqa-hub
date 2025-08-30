@@ -174,21 +174,25 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    
     steps:
     - name: Checkout loqa-hub
       uses: actions/checkout@v4
-      with:
-        path: loqa-hub
 
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
         scan-type: 'fs'
-        scan-ref: './loqa-hub'
+        scan-ref: '.'
         format: 'sarif'
         output: 'trivy-results.sarif'
 
     - name: Upload Trivy scan results
+      if: always()
       uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: 'trivy-results.sarif'
