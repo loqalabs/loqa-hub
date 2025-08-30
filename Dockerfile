@@ -1,42 +1,28 @@
-FROM golang:1.24-alpine AS whisper-builder
+# Go builder stage  
+FROM golang:1.24-alpine AS go-builder
 
-# Install build dependencies
-RUN apk add --no-cache \
-    git \
-    build-base \
-    cmake \
-    pkgconfig
+# Install build dependencies for whisper.cpp
+RUN apk add --no-cache git build-base cmake
 
-# Build whisper.cpp from source
+# Enable CGO for whisper.cpp integration
+ENV CGO_ENABLED=1
+
+# Clone and build whisper.cpp
 WORKDIR /tmp
 RUN git clone https://github.com/ggerganov/whisper.cpp.git
 WORKDIR /tmp/whisper.cpp
+RUN make build && \
+    echo "=== Built libraries ===" && \
+    find build -name "*.so" -exec ls -la {} \; && \
+    echo "=== Creating lib directory with symlinks ===" && \
+    mkdir -p lib && \
+    ln -sf ../build/src/libwhisper.so* lib/ && \
+    ln -sf ../build/ggml/src/libggml*.so lib/ && \
+    ls -la lib/
 
-# Build whisper.cpp (creates libwhisper.a automatically)
-RUN make
-
-# Create lib directory and copy built libraries
-RUN mkdir -p /tmp/whisper.cpp/lib && \
-    find . -name "*.a" -exec cp {} /tmp/whisper.cpp/lib/ \; && \
-    ls -la /tmp/whisper.cpp/lib/
-
-# Install headers
-RUN mkdir -p /tmp/whisper.cpp/include && \
-    find /tmp/whisper.cpp -name "*.h" -type f -exec cp {} /tmp/whisper.cpp/include/ \;
-
-# Go builder stage
-FROM golang:1.24-alpine AS go-builder
-
-# Install basic tools
-RUN apk add --no-cache git build-base
-
-# Set CGO flags for whisper.cpp
-ENV CGO_ENABLED=1
-ENV CGO_CFLAGS="-I/tmp/whisper.cpp/include"
-ENV CGO_LDFLAGS="-L/tmp/whisper.cpp/lib -lwhisper -lm -lstdc++"
-
-# Copy whisper.cpp from builder
-COPY --from=whisper-builder /tmp/whisper.cpp /tmp/whisper.cpp
+# Set environment variables for whisper.cpp
+ENV C_INCLUDE_PATH=/tmp/whisper.cpp/include:/tmp/whisper.cpp/ggml/include
+ENV LIBRARY_PATH=/tmp/whisper.cpp/build/src:/tmp/whisper.cpp/build/ggml/src
 
 # Set working directory
 WORKDIR /app
@@ -65,14 +51,22 @@ RUN apk add --no-cache ca-certificates libgomp libstdc++
 # Create app directory
 WORKDIR /app
 
-# Copy binary
+# Copy binary and whisper libraries
 COPY --from=go-builder /app/loqa-hub .
+COPY --from=go-builder /tmp/whisper.cpp/build/src/libwhisper.so* /usr/local/lib/
+COPY --from=go-builder /tmp/whisper.cpp/build/ggml/src/libggml.so /usr/local/lib/
+COPY --from=go-builder /tmp/whisper.cpp/build/ggml/src/libggml-cpu.so /usr/local/lib/
+COPY --from=go-builder /tmp/whisper.cpp/build/ggml/src/libggml-base.so /usr/local/lib/
 
-# Copy whisper.cpp libraries 
-COPY --from=whisper-builder /tmp/whisper.cpp/lib/ /usr/local/lib/
+# Create symlinks for versioned library names
+RUN ln -sf libggml-base.so /usr/local/lib/libggml-base.so.1 && \
+    ln -sf libggml.so /usr/local/lib/libggml.so.1 && \
+    ln -sf libggml-cpu.so /usr/local/lib/libggml-cpu.so.1
 
-# Set library path
+# Set library path for whisper.cpp libraries
 ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+
+# Whisper.cpp integration enabled
 
 # Set default environment variables
 ENV WHISPER_MODEL_PATH=/models/ggml-tiny.bin
