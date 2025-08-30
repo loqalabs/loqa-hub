@@ -1,5 +1,7 @@
 # 🧠 Loqa Hub
 
+[![CI/CD Pipeline](https://github.com/loqalabs/loqa-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/loqalabs/loqa-hub/actions/workflows/ci.yml)
+
 Central orchestrator for the Loqa local-first voice assistant platform.
 
 ## Overview
