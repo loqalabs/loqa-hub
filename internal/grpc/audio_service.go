@@ -24,9 +24,13 @@ import (
 	"os"
 	"time"
 
+	"go.uber.org/zap"
 	pb "github.com/loqalabs/loqa-proto/go"
+	"github.com/loqalabs/loqa-hub/internal/events"
 	"github.com/loqalabs/loqa-hub/internal/llm"
+	"github.com/loqalabs/loqa-hub/internal/logging"
 	"github.com/loqalabs/loqa-hub/internal/messaging"
+	"github.com/loqalabs/loqa-hub/internal/storage"
 )
 
 // AudioService implements the gRPC AudioService
@@ -35,10 +39,11 @@ type AudioService struct {
 	transcriber    *llm.WhisperTranscriber
 	commandParser  *llm.CommandParser
 	natsService    *messaging.NATSService
+	eventsStore    *storage.VoiceEventsStore
 }
 
 // NewAudioService creates a new audio service
-func NewAudioService(modelPath string) (*AudioService, error) {
+func NewAudioService(modelPath string, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
 	transcriber, err := llm.NewWhisperTranscriber(modelPath)
 	if err != nil {
 		return nil, err
@@ -85,59 +90,83 @@ func NewAudioService(modelPath string) (*AudioService, error) {
 		transcriber:   transcriber,
 		commandParser: commandParser,
 		natsService:   natsService,
+		eventsStore:   eventsStore,
 	}, nil
 }
 
 // StreamAudio handles bidirectional audio streaming from pucks
 func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) error {
-	log.Println("🎙️  Hub: New audio stream connected")
+	logging.Sugar.Info("🎙️  Hub: New audio stream connected")
 
 	for {
 		// Receive audio chunk from puck
 		chunk, err := stream.Recv()
 		if err == io.EOF {
-			log.Println("🎙️  Hub: Audio stream ended")
+			logging.Sugar.Info("🎙️  Hub: Audio stream ended")
 			return nil
 		}
 		if err != nil {
-			log.Printf("❌ Error receiving audio chunk: %v", err)
+			logging.LogError(err, "Error receiving audio chunk")
 			return err
 		}
 
-		log.Printf("📥 Hub: Received audio chunk from puck %s (%d bytes, wake_word: %v)", 
-			chunk.PuckId, len(chunk.AudioData), chunk.IsWakeWord)
+		logging.LogAudioProcessing(chunk.PuckId, "received", 
+			zap.Int("bytes", len(chunk.AudioData)),
+			zap.Bool("wake_word", chunk.IsWakeWord),
+		)
 
 		// Process audio if it's end of speech
 		if chunk.IsEndOfSpeech {
-			log.Printf("🎯 Hub: Processing complete utterance from puck %s", chunk.PuckId)
+			logging.LogAudioProcessing(chunk.PuckId, "processing_utterance")
+
+			// Create voice event for tracking
+			voiceEvent := events.NewVoiceEvent(chunk.PuckId, chunk.PuckId)
 
 			// Convert audio bytes back to float32
 			audioData := bytesToFloat32Array(chunk.AudioData)
 			
+			// Set audio metadata
+			voiceEvent.SetAudioMetadata(audioData, int(chunk.SampleRate), chunk.IsWakeWord)
+			
 			// Transcribe audio using Whisper
 			transcription, err := as.transcriber.Transcribe(audioData, int(chunk.SampleRate))
 			if err != nil {
-				log.Printf("❌ Error transcribing audio: %v", err)
+				logging.LogError(err, "Error transcribing audio", 
+					zap.String("puck_id", chunk.PuckId),
+					zap.String("event_uuid", voiceEvent.UUID),
+				)
+				voiceEvent.SetError(err)
+				as.storeVoiceEvent(voiceEvent)
 				continue
 			}
 			
-			wakeWordStatus := ""
-			if chunk.IsWakeWord {
-				wakeWordStatus = " [wake word detected]"
-			}
-			log.Printf("📝 Processing audio (%d samples)%s -> \"%s\"", len(audioData), wakeWordStatus, transcription)
+			// Set transcription result
+			voiceEvent.SetTranscription(transcription)
+			
+			logging.LogAudioProcessing(chunk.PuckId, "transcribed",
+				zap.String("event_uuid", voiceEvent.UUID),
+				zap.Int("audio_samples", len(audioData)),
+				zap.String("transcription", transcription),
+				zap.Bool("wake_word", chunk.IsWakeWord),
+			)
 
 			if transcription == "" {
-				log.Printf("🔇 No speech detected in audio from puck %s", chunk.PuckId)
+				logging.LogAudioProcessing(chunk.PuckId, "no_speech_detected",
+					zap.String("event_uuid", voiceEvent.UUID),
+				)
+				voiceEvent.SetResponse("No speech detected")
+				as.storeVoiceEvent(voiceEvent)
 				continue
 			}
-
-			log.Printf("📝 Transcribed: \"%s\"", transcription)
 
 			// Parse command using LLM
 			command, err := as.commandParser.ParseCommand(transcription)
 			if err != nil {
-				log.Printf("❌ Error parsing command: %v", err)
+				logging.LogError(err, "Error parsing command", 
+					zap.String("puck_id", chunk.PuckId),
+					zap.String("event_uuid", voiceEvent.UUID),
+					zap.String("transcription", transcription),
+				)
 				command = &llm.Command{
 					Intent:     "unknown",
 					Entities:   make(map[string]string),
@@ -146,11 +175,18 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 				}
 			}
 
+			// Set command parsing results
+			voiceEvent.SetCommandResult(command.Intent, command.Entities, command.Confidence)
+
 			commandStr := command.Intent
 			responseText := command.Response
 			
-			log.Printf("🧠 Parsed command - Intent: %s, Entities: %v, Confidence: %.2f", 
-				command.Intent, command.Entities, command.Confidence)
+			logging.LogAudioProcessing(chunk.PuckId, "command_parsed",
+				zap.String("event_uuid", voiceEvent.UUID),
+				zap.String("intent", command.Intent),
+				zap.Float64("confidence", command.Confidence),
+				zap.Any("entities", command.Entities),
+			)
 
 			// Publish command event to NATS
 			if as.natsService != nil && as.natsService.IsConnected() {
@@ -165,7 +201,16 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 				}
 
 				if err := as.natsService.PublishVoiceCommand(commandEvent); err != nil {
-					log.Printf("⚠️  Warning: Failed to publish voice command to NATS: %v", err)
+					logging.LogWarn("Failed to publish voice command to NATS", 
+						zap.Error(err),
+						zap.String("puck_id", chunk.PuckId),
+						zap.String("event_uuid", voiceEvent.UUID),
+					)
+				} else {
+					logging.LogNATSEvent("loqa.voice.commands", "published",
+						zap.String("puck_id", chunk.PuckId),
+						zap.String("intent", command.Intent),
+					)
 				}
 
 				// If this is a device command, also publish a device command event
@@ -173,7 +218,15 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 					deviceCommand := as.createDeviceCommand(commandEvent)
 					if deviceCommand != nil {
 						if err := as.natsService.PublishDeviceCommand(deviceCommand); err != nil {
-							log.Printf("⚠️  Warning: Failed to publish device command to NATS: %v", err)
+							logging.LogWarn("Failed to publish device command to NATS", 
+								zap.Error(err),
+								zap.String("device_type", deviceCommand.DeviceType),
+							)
+						} else {
+							logging.LogNATSEvent("loqa.devices.commands", "published",
+								zap.String("device_type", deviceCommand.DeviceType),
+								zap.String("action", deviceCommand.Action),
+							)
 						}
 					}
 				}
@@ -189,12 +242,22 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			}
 
 			if err := stream.Send(response); err != nil {
-				log.Printf("❌ Error sending response: %v", err)
+				logging.LogError(err, "Error sending response to puck",
+					zap.String("puck_id", chunk.PuckId),
+					zap.String("event_uuid", voiceEvent.UUID),
+				)
 				return err
 			}
 
-			log.Printf("📤 Hub: Sent response to puck %s - Command: %s", 
-				chunk.PuckId, commandStr)
+			// Set final response and store the complete voice event
+			voiceEvent.SetResponse(responseText)
+			as.storeVoiceEvent(voiceEvent)
+
+			logging.LogAudioProcessing(chunk.PuckId, "response_sent",
+				zap.String("event_uuid", voiceEvent.UUID),
+				zap.String("intent", commandStr),
+				zap.String("response", responseText),
+			)
 		}
 	}
 }
@@ -284,4 +347,27 @@ func (as *AudioService) mapIntentToAction(intent string) string {
 		"volume":   "volume",
 	}
 	return actionMap[intent]
+}
+
+// storeVoiceEvent stores a voice event in the database
+func (as *AudioService) storeVoiceEvent(voiceEvent *events.VoiceEvent) {
+	if as.eventsStore == nil {
+		logging.LogWarn("Events store not available, skipping voice event storage",
+			zap.String("event_uuid", voiceEvent.UUID),
+		)
+		return
+	}
+
+	if err := as.eventsStore.Insert(voiceEvent); err != nil {
+		logging.LogError(err, "Failed to store voice event", 
+			zap.String("event_uuid", voiceEvent.UUID),
+			zap.String("puck_id", voiceEvent.PuckID),
+		)
+	} else {
+		logging.LogDatabaseOperation("insert", "voice_events",
+			zap.String("event_uuid", voiceEvent.UUID),
+			zap.String("intent", voiceEvent.Intent),
+			zap.Bool("success", voiceEvent.Success),
+		)
+	}
 }
