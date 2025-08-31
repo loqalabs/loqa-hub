@@ -16,6 +16,7 @@ Loqa Hub is the core service that handles:
 - Speech-to-text processing via Whisper.cpp
 - LLM-based intent parsing and command extraction
 - NATS integration for publishing commands to other services
+- **NEW:** Complete voice event tracking and observability
 
 ## Features
 
@@ -25,9 +26,44 @@ Loqa Hub is the core service that handles:
 - 📡 **Event Publishing**: Publishes parsed commands to NATS message bus
 - 🔒 **Privacy-First**: All processing happens locally, no cloud dependencies
 
+### 🆕 Phase 2: Observability & Event Tracking
+
+- 📊 **Voice Event Tracking**: Every interaction generates structured events with full traceability
+- 🗄️ **SQLite Storage**: Persistent event storage with optimized performance (WAL, indexes)
+- 📝 **Structured Logging**: Rich context logging with Zap (configurable JSON/console output)
+- 🌐 **HTTP API**: RESTful endpoints for event access and debugging
+- 🔍 **Audio Fingerprinting**: SHA-256 hashing for deduplication and analysis
+- ⏱️ **Performance Metrics**: Processing time tracking throughout the voice pipeline
+- 🚨 **Error Tracking**: Comprehensive error state capture and reporting
+
 ## Architecture
 
-The Hub service acts as the central nervous system of the Loqa platform, orchestrating the flow from voice input to actionable commands.
+The Hub service acts as the central nervous system of the Loqa platform, orchestrating the flow from voice input to actionable commands. With Phase 2, all voice interactions are now fully traceable with structured events stored in SQLite and accessible via HTTP API.
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOQA_HUB_PORT` | `3000` | HTTP server port |
+| `LOQA_GRPC_PORT` | `50051` | gRPC server port |
+| `DB_PATH` | `./data/loqa-hub.db` | SQLite database file location |
+| `LOG_LEVEL` | `info` | Logging level (debug, info, warn, error) |
+| `LOG_FORMAT` | `console` | Log output format (json, console) |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
+| `OLLAMA_MODEL` | `llama3.2:3b` | Ollama model for intent parsing |
+| `NATS_URL` | `nats://localhost:4222` | NATS server URL |
+
+### API Access
+
+The Hub exposes a RESTful API for accessing voice events:
+
+- `GET /api/voice-events` - List events with pagination and filtering
+- `GET /api/voice-events/{uuid}` - Get specific event details
+- `POST /api/voice-events` - Create events (testing/integrations)
+
+See [`API.md`](API.md) for complete endpoint documentation with examples.
 
 ## Getting Started
 
