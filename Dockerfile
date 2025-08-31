@@ -27,12 +27,15 @@ ENV LIBRARY_PATH=/tmp/whisper.cpp/build/src:/tmp/whisper.cpp/build/ggml/src
 # Set working directory
 WORKDIR /app
 
-# Copy go module files first
-COPY go.mod go.sum ./
-RUN go mod download
+# Copy proto module first (needed for local replace)
+COPY loqa-proto ./loqa-proto
 
-# Copy source code
-COPY . .
+# Copy loqa-hub 
+COPY loqa-hub ./loqa-hub
+WORKDIR /app/loqa-hub
+
+# Download go modules
+RUN go mod download
 
 # Build the hub service with whisper support  
 RUN go build -tags whisper -o loqa-hub ./cmd
@@ -47,7 +50,7 @@ RUN apk add --no-cache ca-certificates libgomp libstdc++
 WORKDIR /app
 
 # Copy binary and whisper libraries
-COPY --from=go-builder /app/loqa-hub .
+COPY --from=go-builder /app/loqa-hub/loqa-hub .
 COPY --from=go-builder /tmp/whisper.cpp/build/src/libwhisper.so* /usr/local/lib/
 COPY --from=go-builder /tmp/whisper.cpp/build/ggml/src/libggml.so /usr/local/lib/
 COPY --from=go-builder /tmp/whisper.cpp/build/ggml/src/libggml-cpu.so /usr/local/lib/
