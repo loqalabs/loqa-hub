@@ -59,7 +59,7 @@ RUN ln -sf libggml-base.so /usr/local/lib/libggml-base.so.1 && \
     ln -sf libggml-cpu.so /usr/local/lib/libggml-cpu.so.1
 
 # Set library path for whisper.cpp libraries
-ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/usr/local/lib
 
 # Whisper.cpp integration enabled
 
