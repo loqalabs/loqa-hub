@@ -69,6 +69,12 @@ tmp/
 temp/
 .tmp/
 
+# Database files
+data/
+*.db
+*.db-shm
+*.db-wal
+
 # Docker
 docker-compose.override.yml
 
