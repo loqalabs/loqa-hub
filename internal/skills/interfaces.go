@@ -26,19 +26,20 @@ import (
 // SkillPlugin defines the interface that all Loqa skills must implement
 type SkillPlugin interface {
 	// Lifecycle hooks
-	Init(ctx context.Context, config *SkillConfig) error
-	Shutdown(ctx context.Context) error
+	Initialize(ctx context.Context, config *SkillConfig) error
+	Teardown(ctx context.Context) error
 	
 	// Core functionality
+	CanHandle(intent VoiceIntent) bool
 	HandleIntent(ctx context.Context, intent *VoiceIntent) (*SkillResponse, error)
 	
 	// Metadata
-	GetManifest() *SkillManifest
+	GetManifest() (*SkillManifest, error)
 	GetStatus() SkillStatus
 	
 	// Configuration
-	GetConfigSchema() *ConfigSchema
-	UpdateConfig(ctx context.Context, config map[string]interface{}) error
+	GetConfig() (*SkillConfig, error)
+	UpdateConfig(ctx context.Context, config *SkillConfig) error
 	
 	// Health checking
 	HealthCheck(ctx context.Context) error
@@ -123,24 +124,28 @@ type SkillManifest struct {
 	License     string   `json:"license"`
 	
 	// Capabilities
-	IntentPatterns []string   `json:"intent_patterns"`
-	Languages      []string   `json:"languages"`
-	Categories     []string   `json:"categories"`
+	IntentPatterns []IntentPattern `json:"intent_patterns"`
+	Languages      []string        `json:"languages"`
+	Categories     []string        `json:"categories"`
 	
 	// Requirements
-	Permissions    []Permission `json:"permissions"`
-	Dependencies   []string     `json:"dependencies,omitempty"`
-	MinVersion     string       `json:"min_loqa_version"`
+	Permissions    []Permission    `json:"permissions"`
+	Dependencies   []string        `json:"dependencies,omitempty"`
+	MinVersion     string          `json:"min_loqa_version"`
+	ConfigSchema   *ConfigSchema   `json:"config_schema,omitempty"`
 	
 	// Runtime behavior
-	LoadOnStartup  bool         `json:"load_on_startup"`
-	Singleton      bool         `json:"singleton"`
-	Timeout        string       `json:"timeout"`
+	LoadOnStartup  bool            `json:"load_on_startup"`
+	Singleton      bool            `json:"singleton"`
+	Timeout        string          `json:"timeout"`
+	SandboxMode    SandboxMode     `json:"sandbox_mode"`
+	TrustLevel     TrustLevel      `json:"trust_level"`
 	
 	// Metadata
-	Homepage       string       `json:"homepage,omitempty"`
-	Repository     string       `json:"repository,omitempty"`
-	Keywords       []string     `json:"keywords,omitempty"`
+	Homepage       string          `json:"homepage,omitempty"`
+	Repository     string          `json:"repository,omitempty"`
+	Keywords       []string        `json:"keywords,omitempty"`
+	Tags           []string        `json:"tags,omitempty"`
 }
 
 // Permission defines what a skill is allowed to access
@@ -198,6 +203,49 @@ type ConfigProperty struct {
 	Enum        []string    `json:"enum,omitempty"`
 	Format      string      `json:"format,omitempty"`
 	Sensitive   bool        `json:"sensitive,omitempty"`
+}
+
+// IntentPattern defines patterns this skill can handle
+type IntentPattern struct {
+	Name        string   `json:"name"`
+	Examples    []string `json:"examples"`
+	Confidence  float64  `json:"min_confidence"`
+	Priority    int      `json:"priority"`
+	Enabled     bool     `json:"enabled"`
+	Categories  []string `json:"categories,omitempty"`
+	Languages   []string `json:"languages,omitempty"`
+}
+
+// SandboxMode defines how the skill should be executed
+type SandboxMode string
+
+const (
+	SandboxNone    SandboxMode = "none"       // No sandboxing
+	SandboxProcess SandboxMode = "process"    // Run in separate process
+	SandboxWASM    SandboxMode = "wasm"       // Run in WASM runtime
+	SandboxDocker  SandboxMode = "docker"     // Run in Docker container
+)
+
+// TrustLevel defines the trust level of the skill
+type TrustLevel string
+
+const (
+	TrustSystem    TrustLevel = "system"      // System/built-in skills
+	TrustVerified  TrustLevel = "verified"    // Verified by Loqa Labs
+	TrustCommunity TrustLevel = "community"   // Community contributions
+	TrustUnknown   TrustLevel = "unknown"     // Unverified/local skills
+)
+
+// SkillInfo contains information about a loaded skill
+type SkillInfo struct {
+	Manifest    *SkillManifest `json:"manifest"`
+	Config      *SkillConfig   `json:"config"`
+	Status      SkillStatus    `json:"status"`
+	LoadedAt    time.Time      `json:"loaded_at"`
+	LastUsed    *time.Time     `json:"last_used,omitempty"`
+	ErrorCount  int            `json:"error_count"`
+	LastError   string         `json:"last_error,omitempty"`
+	PluginPath  string         `json:"plugin_path"`
 }
 
 // SkillExecutor defines how skills are executed (for different plugin types)

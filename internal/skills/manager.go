@@ -21,405 +21,471 @@ package skills
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
+	"github.com/loqalabs/loqa-hub/internal/logging"
 )
 
-// Manager handles the loading, lifecycle, and execution of skills
-type Manager struct {
-	logger     *zap.Logger
-	skillsPath string
-	
-	// Skill management
-	skills     map[string]SkillPlugin
-	configs    map[string]*SkillConfig
-	executors  map[string]SkillExecutor
-	
-	// Synchronization
-	mu         sync.RWMutex
-	
-	// Context for lifecycle management
-	ctx        context.Context
-	cancel     context.CancelFunc
+var (
+	ErrSkillNotFound       = errors.New("skill not found")
+	ErrSkillAlreadyLoaded  = errors.New("skill already loaded")
+	ErrInvalidManifest     = errors.New("invalid skill manifest")
+	ErrPermissionDenied    = errors.New("permission denied")
+	ErrSkillInitFailed     = errors.New("skill initialization failed")
+	ErrNoSkillCanHandle    = errors.New("no skill can handle this intent")
+)
+
+// SkillManagerConfig holds configuration for the skill manager
+type SkillManagerConfig struct {
+	SkillsDir      string        `json:"skills_dir"`
+	AutoLoad       bool          `json:"auto_load"`
+	MaxSkills      int           `json:"max_skills"`
+	LoadTimeout    time.Duration `json:"load_timeout"`
+	DefaultTrust   TrustLevel    `json:"default_trust"`
+	AllowedModes   []SandboxMode `json:"allowed_sandbox_modes"`
+	ConfigStore    string        `json:"config_store"`
 }
 
-// NewManager creates a new skill manager
-func NewManager(logger *zap.Logger, skillsPath string) *Manager {
-	ctx, cancel := context.WithCancel(context.Background())
-	
-	return &Manager{
-		logger:     logger,
-		skillsPath: skillsPath,
-		skills:     make(map[string]SkillPlugin),
-		configs:    make(map[string]*SkillConfig),
-		executors:  make(map[string]SkillExecutor),
-		ctx:        ctx,
-		cancel:     cancel,
+// SkillManager manages the lifecycle of skills
+type SkillManager struct {
+	config  SkillManagerConfig
+	skills  map[string]*LoadedSkill
+	mutex   sync.RWMutex
+	loader  SkillLoader
+}
+
+// LoadedSkill wraps a SkillPlugin with additional runtime information
+type LoadedSkill struct {
+	Plugin   SkillPlugin
+	Info     *SkillInfo
+	mutex    sync.RWMutex
+}
+
+// SkillLoader defines the interface for loading skills
+type SkillLoader interface {
+	LoadSkill(ctx context.Context, skillPath string) (SkillPlugin, error)
+	UnloadSkill(ctx context.Context, plugin SkillPlugin) error
+	SupportedModes() []SandboxMode
+}
+
+// NewSkillManager creates a new skill manager
+func NewSkillManager(config SkillManagerConfig, loader SkillLoader) *SkillManager {
+	if config.MaxSkills <= 0 {
+		config.MaxSkills = 50
+	}
+	if config.LoadTimeout <= 0 {
+		config.LoadTimeout = 30 * time.Second
+	}
+
+	return &SkillManager{
+		config: config,
+		skills: make(map[string]*LoadedSkill),
+		loader: loader,
 	}
 }
 
-// RegisterExecutor registers a skill executor for a specific skill type
-func (m *Manager) RegisterExecutor(skillType string, executor SkillExecutor) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// Start initializes the skill manager and loads skills
+func (sm *SkillManager) Start(ctx context.Context) error {
+	logging.Sugar.Infow("Starting skill manager", "skills_dir", sm.config.SkillsDir)
 	
-	m.executors[skillType] = executor
-	m.logger.Info("Registered skill executor", zap.String("type", skillType))
+	if sm.config.AutoLoad {
+		if err := sm.loadAllSkills(ctx); err != nil {
+			logging.Sugar.Warnw("Failed to load some skills during startup", "error", err)
+		}
+	}
+
+	return nil
 }
 
-// LoadSkillsFromDirectory scans the skills directory and loads all available skills
-func (m *Manager) LoadSkillsFromDirectory() error {
-	if m.skillsPath == "" {
-		m.logger.Warn("No skills directory configured, skipping skill loading")
+// Stop gracefully shuts down the skill manager
+func (sm *SkillManager) Stop(ctx context.Context) error {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+
+	logging.Sugar.Infow("Stopping skill manager", "loaded_skills", len(sm.skills))
+
+	var errors []error
+	for skillID := range sm.skills {
+		if err := sm.unloadSkillUnsafe(ctx, skillID); err != nil {
+			errors = append(errors, fmt.Errorf("failed to unload skill %s: %w", skillID, err))
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("errors during shutdown: %v", errors)
+	}
+
+	return nil
+}
+
+// LoadSkill loads a skill from the specified path
+func (sm *SkillManager) LoadSkill(ctx context.Context, skillPath string) error {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+
+	// Load the manifest first to get skill ID
+	manifest, err := sm.loadManifest(skillPath)
+	if err != nil {
+		return fmt.Errorf("failed to load manifest: %w", err)
+	}
+
+	// Check if already loaded
+	if _, exists := sm.skills[manifest.ID]; exists {
+		return ErrSkillAlreadyLoaded
+	}
+
+	// Check skill limits
+	if len(sm.skills) >= sm.config.MaxSkills {
+		return fmt.Errorf("maximum number of skills reached: %d", sm.config.MaxSkills)
+	}
+
+	// Validate permissions and trust level
+	if err := sm.validateSkill(manifest); err != nil {
+		return fmt.Errorf("skill validation failed: %w", err)
+	}
+
+	// Load the plugin
+	ctx, cancel := context.WithTimeout(ctx, sm.config.LoadTimeout)
+	defer cancel()
+
+	plugin, err := sm.loader.LoadSkill(ctx, skillPath)
+	if err != nil {
+		return fmt.Errorf("failed to load skill plugin: %w", err)
+	}
+
+	// Load or create skill configuration
+	config, err := sm.loadSkillConfig(manifest.ID)
+	if err != nil {
+		logging.Sugar.Warnw("Failed to load skill config, using defaults", "skill", manifest.ID, "error", err)
+		config = &SkillConfig{
+			SkillID:     manifest.ID,
+			Name:        manifest.Name,
+			Version:     manifest.Version,
+			Config:      make(map[string]interface{}),
+			Permissions: manifest.Permissions,
+			Enabled:     true,
+			Timeout:     30 * time.Second,
+			MaxRetries:  3,
+		}
+	}
+
+	// Initialize the skill
+	if err := plugin.Initialize(ctx, config); err != nil {
+		sm.loader.UnloadSkill(ctx, plugin)
+		return fmt.Errorf("skill initialization failed: %w", err)
+	}
+
+	// Create loaded skill info
+	skillInfo := &SkillInfo{
+		Manifest:   manifest,
+		Config:     config,
+		Status:     SkillStatus{State: SkillStateReady, Healthy: true},
+		LoadedAt:   time.Now(),
+		PluginPath: skillPath,
+	}
+
+	loadedSkill := &LoadedSkill{
+		Plugin: plugin,
+		Info:   skillInfo,
+	}
+
+	sm.skills[manifest.ID] = loadedSkill
+
+	logging.Sugar.Infow("Skill loaded successfully", 
+		"skill_id", manifest.ID, 
+		"name", manifest.Name, 
+		"version", manifest.Version)
+
+	return nil
+}
+
+// UnloadSkill unloads a skill
+func (sm *SkillManager) UnloadSkill(ctx context.Context, skillID string) error {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+	return sm.unloadSkillUnsafe(ctx, skillID)
+}
+
+func (sm *SkillManager) unloadSkillUnsafe(ctx context.Context, skillID string) error {
+	loadedSkill, exists := sm.skills[skillID]
+	if !exists {
+		return ErrSkillNotFound
+	}
+
+	// Update status
+	loadedSkill.mutex.Lock()
+	loadedSkill.Info.Status.State = SkillStateShutdown
+	loadedSkill.mutex.Unlock()
+
+	// Teardown the skill
+	if err := loadedSkill.Plugin.Teardown(ctx); err != nil {
+		logging.Sugar.Warnw("Skill teardown failed", "skill", skillID, "error", err)
+	}
+
+	// Unload from loader
+	if err := sm.loader.UnloadSkill(ctx, loadedSkill.Plugin); err != nil {
+		logging.Sugar.Warnw("Failed to unload skill from loader", "skill", skillID, "error", err)
+	}
+
+	delete(sm.skills, skillID)
+
+	logging.Sugar.Infow("Skill unloaded", "skill_id", skillID)
+	return nil
+}
+
+// HandleIntent routes an intent to the appropriate skill
+func (sm *SkillManager) HandleIntent(ctx context.Context, intent *VoiceIntent) (*SkillResponse, error) {
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+
+	// Find skills that can handle this intent
+	var candidates []*LoadedSkill
+	for _, loadedSkill := range sm.skills {
+		loadedSkill.mutex.RLock()
+		if loadedSkill.Info.Status.State == SkillStateReady && 
+		   loadedSkill.Info.Status.Healthy &&
+		   loadedSkill.Info.Config.Enabled &&
+		   loadedSkill.Plugin.CanHandle(*intent) {
+			candidates = append(candidates, loadedSkill)
+		}
+		loadedSkill.mutex.RUnlock()
+	}
+
+	if len(candidates) == 0 {
+		return nil, ErrNoSkillCanHandle
+	}
+
+	// Sort by priority (implement priority logic based on manifest)
+	sort.Slice(candidates, func(i, j int) bool {
+		// For now, use first match
+		return true
+	})
+
+	// Try each candidate until one succeeds
+	var lastError error
+	for _, candidate := range candidates {
+		response, err := sm.executeSkill(ctx, candidate, intent)
+		if err != nil {
+			lastError = err
+			candidate.mutex.Lock()
+			candidate.Info.ErrorCount++
+			candidate.Info.LastError = err.Error()
+			candidate.mutex.Unlock()
+			
+			logging.Sugar.Warnw("Skill execution failed", 
+				"skill", candidate.Info.Manifest.ID, 
+				"error", err)
+			continue
+		}
+
+		// Update usage statistics
+		candidate.mutex.Lock()
+		now := time.Now()
+		candidate.Info.LastUsed = &now
+		candidate.Info.Status.LastUsed = now
+		candidate.Info.Status.UsageCount++
+		candidate.mutex.Unlock()
+
+		return response, nil
+	}
+
+	return nil, fmt.Errorf("all candidate skills failed, last error: %w", lastError)
+}
+
+func (sm *SkillManager) executeSkill(ctx context.Context, loadedSkill *LoadedSkill, intent *VoiceIntent) (*SkillResponse, error) {
+	// Set a reasonable timeout for skill execution
+	ctx, cancel := context.WithTimeout(ctx, loadedSkill.Info.Config.Timeout)
+	defer cancel()
+
+	return loadedSkill.Plugin.HandleIntent(ctx, intent)
+}
+
+// GetSkill returns information about a loaded skill
+func (sm *SkillManager) GetSkill(skillID string) (*SkillInfo, error) {
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+
+	loadedSkill, exists := sm.skills[skillID]
+	if !exists {
+		return nil, ErrSkillNotFound
+	}
+
+	loadedSkill.mutex.RLock()
+	defer loadedSkill.mutex.RUnlock()
+
+	// Return a copy to avoid concurrent access issues
+	info := *loadedSkill.Info
+	return &info, nil
+}
+
+// ListSkills returns information about all loaded skills
+func (sm *SkillManager) ListSkills() []*SkillInfo {
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+
+	skills := make([]*SkillInfo, 0, len(sm.skills))
+	for _, loadedSkill := range sm.skills {
+		loadedSkill.mutex.RLock()
+		info := *loadedSkill.Info
+		loadedSkill.mutex.RUnlock()
+		skills = append(skills, &info)
+	}
+
+	// Sort by name for consistent ordering
+	sort.Slice(skills, func(i, j int) bool {
+		return skills[i].Manifest.Name < skills[j].Manifest.Name
+	})
+
+	return skills
+}
+
+// EnableSkill enables a skill
+func (sm *SkillManager) EnableSkill(ctx context.Context, skillID string) error {
+	return sm.updateSkillEnabled(ctx, skillID, true)
+}
+
+// DisableSkill disables a skill
+func (sm *SkillManager) DisableSkill(ctx context.Context, skillID string) error {
+	return sm.updateSkillEnabled(ctx, skillID, false)
+}
+
+func (sm *SkillManager) updateSkillEnabled(ctx context.Context, skillID string, enabled bool) error {
+	sm.mutex.RLock()
+	loadedSkill, exists := sm.skills[skillID]
+	sm.mutex.RUnlock()
+
+	if !exists {
+		return ErrSkillNotFound
+	}
+
+	loadedSkill.mutex.Lock()
+	defer loadedSkill.mutex.Unlock()
+
+	loadedSkill.Info.Config.Enabled = enabled
+	if enabled {
+		loadedSkill.Info.Status.State = SkillStateReady
+	} else {
+		loadedSkill.Info.Status.State = SkillStateDisabled
+	}
+
+	// Update the plugin configuration
+	if err := loadedSkill.Plugin.UpdateConfig(ctx, loadedSkill.Info.Config); err != nil {
+		return fmt.Errorf("failed to update skill config: %w", err)
+	}
+
+	// Save configuration
+	if err := sm.saveSkillConfig(skillID, loadedSkill.Info.Config); err != nil {
+		logging.Sugar.Warnw("Failed to save skill config", "skill", skillID, "error", err)
+	}
+
+	return nil
+}
+
+// loadAllSkills loads all skills from the skills directory
+func (sm *SkillManager) loadAllSkills(ctx context.Context) error {
+	if sm.config.SkillsDir == "" {
 		return nil
 	}
-	
-	// Ensure skills directory exists
-	if err := os.MkdirAll(m.skillsPath, 0755); err != nil {
-		return fmt.Errorf("failed to create skills directory: %w", err)
-	}
-	
-	// Scan for skill manifests
-	return filepath.Walk(m.skillsPath, func(path string, info os.FileInfo, err error) error {
+
+	return filepath.WalkDir(sm.config.SkillsDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		
-		if info.Name() == "skill.json" || info.Name() == "manifest.json" {
-			if err := m.loadSkillFromManifest(path); err != nil {
-				m.logger.Error("Failed to load skill", 
-					zap.String("manifest", path), 
-					zap.Error(err))
+
+		if d.IsDir() && path != sm.config.SkillsDir {
+			// Check if this directory contains a manifest
+			manifestPath := filepath.Join(path, "skill.json")
+			if _, err := os.Stat(manifestPath); err == nil {
+				if loadErr := sm.LoadSkill(ctx, path); loadErr != nil {
+					logging.Sugar.Warnw("Failed to load skill", "path", path, "error", loadErr)
+				}
 			}
+			return filepath.SkipDir // Don't recurse into subdirectories
 		}
-		
+
 		return nil
 	})
 }
 
-// loadSkillFromManifest loads a skill from its manifest file
-func (m *Manager) loadSkillFromManifest(manifestPath string) error {
-	// Read manifest file
+// loadManifest loads and validates a skill manifest
+func (sm *SkillManager) loadManifest(skillPath string) (*SkillManifest, error) {
+	manifestPath := filepath.Join(skillPath, "skill.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
-		return fmt.Errorf("failed to read manifest: %w", err)
+		return nil, fmt.Errorf("failed to read manifest: %w", err)
 	}
-	
-	// Parse manifest
+
 	var manifest SkillManifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
-		return fmt.Errorf("failed to parse manifest: %w", err)
+		return nil, fmt.Errorf("failed to parse manifest: %w", err)
 	}
-	
-	// Load skill configuration
-	config, err := m.loadSkillConfig(manifest.ID)
-	if err != nil {
-		// Create default config if none exists
-		config = &SkillConfig{
-			SkillID:    manifest.ID,
-			Name:       manifest.Name,
-			Version:    manifest.Version,
-			Config:     make(map[string]interface{}),
-			Permissions: manifest.Permissions,
-			Enabled:    manifest.LoadOnStartup,
-			Timeout:    30 * time.Second,
-			MaxRetries: 3,
-		}
+
+	// Basic validation
+	if manifest.ID == "" || manifest.Name == "" || manifest.Version == "" {
+		return nil, ErrInvalidManifest
 	}
-	
-	// Only load if enabled
-	if !config.Enabled {
-		m.logger.Info("Skill disabled, skipping load", zap.String("skill", manifest.ID))
-		return nil
-	}
-	
-	return m.LoadSkill(&manifest, config)
+
+	return &manifest, nil
 }
 
-// LoadSkill loads a specific skill with the given configuration
-func (m *Manager) LoadSkill(manifest *SkillManifest, config *SkillConfig) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	
-	skillID := manifest.ID
-	
-	// Check if skill is already loaded
-	if _, exists := m.skills[skillID]; exists {
-		return fmt.Errorf("skill %s is already loaded", skillID)
-	}
-	
-	// Find appropriate executor (for now, assume built-in)
-	executor, exists := m.executors["builtin"]
-	if !exists {
-		return fmt.Errorf("no executor available for skill type: builtin")
-	}
-	
-	// Load the skill
-	skill, err := executor.LoadSkill(manifest, config)
-	if err != nil {
-		return fmt.Errorf("failed to load skill %s: %w", skillID, err)
-	}
-	
-	// Initialize the skill
-	initCtx, cancel := context.WithTimeout(m.ctx, config.Timeout)
-	defer cancel()
-	
-	if err := skill.Init(initCtx, config); err != nil {
-		return fmt.Errorf("failed to initialize skill %s: %w", skillID, err)
-	}
-	
-	// Store skill and config
-	m.skills[skillID] = skill
-	m.configs[skillID] = config
-	
-	m.logger.Info("Successfully loaded skill", 
-		zap.String("skill", skillID), 
-		zap.String("version", manifest.Version))
-	
-	return nil
-}
-
-// UnloadSkill unloads a specific skill
-func (m *Manager) UnloadSkill(skillID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	
-	skill, exists := m.skills[skillID]
-	if !exists {
-		return fmt.Errorf("skill %s is not loaded", skillID)
-	}
-	
-	// Shutdown the skill
-	shutdownCtx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
-	defer cancel()
-	
-	if err := skill.Shutdown(shutdownCtx); err != nil {
-		m.logger.Warn("Error shutting down skill", 
-			zap.String("skill", skillID), 
-			zap.Error(err))
-	}
-	
-	// Remove from maps
-	delete(m.skills, skillID)
-	delete(m.configs, skillID)
-	
-	m.logger.Info("Unloaded skill", zap.String("skill", skillID))
-	return nil
-}
-
-// ExecuteIntent finds a matching skill and executes the intent
-func (m *Manager) ExecuteIntent(ctx context.Context, intent *VoiceIntent) (*SkillResponse, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	
-	// Find matching skills
-	var matchingSkill SkillPlugin
-	var highestConfidence float64
-	
-	for skillID, skill := range m.skills {
-		manifest := skill.GetManifest()
-		status := skill.GetStatus()
-		
-		// Skip unhealthy skills
-		if !status.Healthy || status.State != SkillStateReady {
-			continue
-		}
-		
-		// Check if skill can handle this intent
-		if m.skillMatches(manifest, intent) {
-			// For now, use the first match
-			// TODO: Implement proper intent routing with confidence scoring
-			matchingSkill = skill
+// validateSkill validates a skill's manifest and permissions
+func (sm *SkillManager) validateSkill(manifest *SkillManifest) error {
+	// Check sandbox mode support
+	supported := false
+	for _, mode := range sm.config.AllowedModes {
+		if mode == manifest.SandboxMode {
+			supported = true
 			break
 		}
 	}
-	
-	if matchingSkill == nil {
-		return &SkillResponse{
-			Success: false,
-			Error:   "No skill found to handle intent",
-			Message: "I don't know how to handle that command.",
-		}, nil
+	if !supported {
+		return fmt.Errorf("sandbox mode %s not supported", manifest.SandboxMode)
 	}
-	
-	// Execute the intent with timeout
-	config := m.configs[matchingSkill.GetManifest().ID]
-	execCtx, cancel := context.WithTimeout(ctx, config.Timeout)
-	defer cancel()
-	
-	startTime := time.Now()
-	response, err := matchingSkill.HandleIntent(execCtx, intent)
-	duration := time.Since(startTime)
-	
-	if response != nil {
-		response.ResponseTime = duration
-	}
-	
-	if err != nil {
-		return &SkillResponse{
-			Success:      false,
-			Error:        err.Error(),
-			ResponseTime: duration,
-		}, err
-	}
-	
-	return response, nil
-}
 
-// skillMatches checks if a skill can handle the given intent
-func (m *Manager) skillMatches(manifest *SkillManifest, intent *VoiceIntent) bool {
-	// Simple pattern matching for now
-	// TODO: Implement proper intent classification
-	
-	for _, pattern := range manifest.IntentPatterns {
-		if intent.Intent == pattern {
-			return true
-		}
+	// Check trust level (implement additional checks as needed)
+	if manifest.TrustLevel == "" {
+		manifest.TrustLevel = sm.config.DefaultTrust
 	}
-	
-	return false
-}
 
-// ListSkills returns information about all loaded skills
-func (m *Manager) ListSkills() map[string]SkillInfo {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	
-	skills := make(map[string]SkillInfo)
-	
-	for skillID, skill := range m.skills {
-		manifest := skill.GetManifest()
-		status := skill.GetStatus()
-		config := m.configs[skillID]
-		
-		skills[skillID] = SkillInfo{
-			Manifest: manifest,
-			Status:   status,
-			Config:   config,
-		}
-	}
-	
-	return skills
-}
-
-// GetSkill returns a specific skill by ID
-func (m *Manager) GetSkill(skillID string) (SkillPlugin, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	
-	skill, exists := m.skills[skillID]
-	return skill, exists
-}
-
-// EnableSkill enables a skill
-func (m *Manager) EnableSkill(skillID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	
-	config, exists := m.configs[skillID]
-	if !exists {
-		return fmt.Errorf("skill %s not found", skillID)
-	}
-	
-	config.Enabled = true
-	return m.saveSkillConfig(skillID, config)
-}
-
-// DisableSkill disables a skill
-func (m *Manager) DisableSkill(skillID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	
-	config, exists := m.configs[skillID]
-	if !exists {
-		return fmt.Errorf("skill %s not found", skillID)
-	}
-	
-	config.Enabled = false
-	if err := m.saveSkillConfig(skillID, config); err != nil {
-		return err
-	}
-	
-	// Unload if currently loaded
-	if _, loaded := m.skills[skillID]; loaded {
-		return m.UnloadSkill(skillID)
-	}
-	
-	return nil
-}
-
-// Shutdown gracefully shuts down all loaded skills
-func (m *Manager) Shutdown() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	
-	var errors []error
-	
-	// Shutdown all skills
-	for skillID := range m.skills {
-		if err := m.UnloadSkill(skillID); err != nil {
-			errors = append(errors, err)
-		}
-	}
-	
-	// Cancel context
-	m.cancel()
-	
-	if len(errors) > 0 {
-		return fmt.Errorf("errors during shutdown: %v", errors)
-	}
-	
 	return nil
 }
 
 // loadSkillConfig loads configuration for a skill
-func (m *Manager) loadSkillConfig(skillID string) (*SkillConfig, error) {
-	configPath := filepath.Join(m.skillsPath, skillID, "config.json")
-	
+func (sm *SkillManager) loadSkillConfig(skillID string) (*SkillConfig, error) {
+	configPath := filepath.Join(sm.config.ConfigStore, skillID+".json")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("config not found")
-		}
-		return nil, fmt.Errorf("failed to read config: %w", err)
+		return nil, err
 	}
-	
+
 	var config SkillConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
-	}
-	
-	return &config, nil
+	err = json.Unmarshal(data, &config)
+	return &config, err
 }
 
 // saveSkillConfig saves configuration for a skill
-func (m *Manager) saveSkillConfig(skillID string, config *SkillConfig) error {
-	skillDir := filepath.Join(m.skillsPath, skillID)
-	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		return fmt.Errorf("failed to create skill directory: %w", err)
+func (sm *SkillManager) saveSkillConfig(skillID string, config *SkillConfig) error {
+	if sm.config.ConfigStore == "" {
+		return nil
 	}
-	
-	configPath := filepath.Join(skillDir, "config.json")
+
+	// Ensure config directory exists
+	if err := os.MkdirAll(sm.config.ConfigStore, 0755); err != nil {
+		return err
+	}
+
+	configPath := filepath.Join(sm.config.ConfigStore, skillID+".json")
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+		return err
 	}
-	
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write config: %w", err)
-	}
-	
-	return nil
-}
 
-// SkillInfo contains information about a loaded skill
-type SkillInfo struct {
-	Manifest *SkillManifest `json:"manifest"`
-	Status   SkillStatus    `json:"status"`
-	Config   *SkillConfig   `json:"config"`
+	return os.WriteFile(configPath, data, 0644)
 }
