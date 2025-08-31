@@ -167,19 +167,19 @@ func (ve *VoiceEvent) IsValid() error {
 	}
 	
 	if ve.PuckID == "" {
-		return fmt.Errorf("PuckID is required")
+		return fmt.Errorf("puckID is required")
 	}
 	
 	if ve.RequestID == "" {
-		return fmt.Errorf("RequestID is required")
+		return fmt.Errorf("requestID is required")
 	}
 	
 	if ve.Timestamp.IsZero() {
-		return fmt.Errorf("Timestamp is required")
+		return fmt.Errorf("timestamp is required")
 	}
 	
 	if ve.Confidence < 0 || ve.Confidence > 1 {
-		return fmt.Errorf("Confidence must be between 0 and 1")
+		return fmt.Errorf("confidence must be between 0 and 1")
 	}
 	
 	return nil
