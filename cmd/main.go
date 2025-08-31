@@ -22,16 +22,24 @@ import (
 	"log"
 	"os"
 
+	"github.com/loqalabs/loqa-hub/internal/logging"
 	"github.com/loqalabs/loqa-hub/internal/server"
 )
 
 func main() {
+	// Initialize structured logging
+	if err := logging.Initialize(); err != nil {
+		log.Fatalf("Failed to initialize logging: %v", err)
+	}
+	defer logging.Close()
+
 	port := getEnv("LOQA_HUB_PORT", "3000")
 	grpcPort := getEnv("LOQA_GRPC_PORT", "50051")
 	modelPath := getEnv("MODEL_PATH", "/tmp/whisper.cpp/models/ggml-tiny.bin")
 	asrURL := getEnv("ASR_HOST", "http://localhost:5001")
 	intentURL := getEnv("INTENT_HOST", "http://localhost:5003")
 	ttsURL := getEnv("TTS_HOST", "http://localhost:5002")
+	dbPath := getEnv("DB_PATH", "./data/loqa-hub.db")
 
 	cfg := server.Config{
 		Port:      port,
@@ -40,12 +48,19 @@ func main() {
 		ASRURL:    asrURL,
 		IntentURL: intentURL,
 		TTSURL:    ttsURL,
+		DBPath:    dbPath,
 	}
 
 	srv := server.New(cfg)
 
-	log.Printf("🚀 loqa-hub listening on http://0.0.0.0:%s", port)
+	logging.Sugar.Infow("🚀 loqa-hub starting",
+		"http_port", port,
+		"grpc_port", grpcPort,
+		"db_path", dbPath,
+	)
+
 	if err := srv.Start(); err != nil {
+		logging.LogError(err, "Failed to start server")
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }

@@ -26,7 +26,9 @@ import (
 
 	"google.golang.org/grpc"
 	pb "github.com/loqalabs/loqa-proto/go"
+	"github.com/loqalabs/loqa-hub/internal/api"
 	grpcservice "github.com/loqalabs/loqa-hub/internal/grpc"
+	"github.com/loqalabs/loqa-hub/internal/storage"
 )
 
 type Config struct {
@@ -36,6 +38,7 @@ type Config struct {
 	ASRURL    string
 	IntentURL string
 	TTSURL    string
+	DBPath    string
 }
 
 type Server struct {
@@ -43,14 +46,32 @@ type Server struct {
 	mux         *http.ServeMux
 	grpcServer  *grpc.Server
 	audioService *grpcservice.AudioService
+	database    *storage.Database
+	eventsStore *storage.VoiceEventsStore
+	apiHandler  *api.VoiceEventsHandler
 }
 
 func New(cfg Config) *Server {
 	mux := http.NewServeMux()
 
+	// Initialize database
+	dbConfig := storage.DatabaseConfig{
+		Path: cfg.DBPath,
+	}
+	database, err := storage.NewDatabase(dbConfig)
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+
+	// Create voice events store
+	eventsStore := storage.NewVoiceEventsStore(database)
+
+	// Create API handler
+	apiHandler := api.NewVoiceEventsHandler(eventsStore)
+
 	// Create gRPC server and audio service
 	grpcServer := grpc.NewServer()
-	audioService, err := grpcservice.NewAudioService(cfg.ModelPath)
+	audioService, err := grpcservice.NewAudioService(cfg.ModelPath, eventsStore)
 	if err != nil {
 		log.Fatalf("Failed to create audio service: %v", err)
 	}
@@ -63,6 +84,9 @@ func New(cfg Config) *Server {
 		mux:          mux,
 		grpcServer:   grpcServer,
 		audioService: audioService,
+		database:     database,
+		eventsStore:  eventsStore,
+		apiHandler:   apiHandler,
 	}
 	s.routes()
 	return s
@@ -94,6 +118,11 @@ func (s *Server) Start() error {
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("/health", s.handleHealth)
+	
+	// Voice Events API
+	s.mux.HandleFunc("/api/voice-events", s.apiHandler.HandleVoiceEvents)
+	s.mux.HandleFunc("/api/voice-events/", s.apiHandler.HandleVoiceEventByID)
+	
 	// future: /wake, /stream, /session, etc.
 }
 
