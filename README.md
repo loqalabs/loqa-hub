@@ -26,7 +26,7 @@ Loqa Hub is the core service that handles:
 - 📡 **Event Publishing**: Publishes parsed commands to NATS message bus
 - 🔒 **Privacy-First**: All processing happens locally, no cloud dependencies
 
-### 🆕 Phase 2: Observability & Event Tracking
+### 🆕 Milestone 2: Observability & Event Tracking
 
 - 📊 **Voice Event Tracking**: Every interaction generates structured events with full traceability
 - 🗄️ **SQLite Storage**: Persistent event storage with optimized performance (WAL, indexes)
@@ -38,7 +38,7 @@ Loqa Hub is the core service that handles:
 
 ## Architecture
 
-The Hub service acts as the central nervous system of the Loqa platform, orchestrating the flow from voice input to actionable commands. With Phase 2, all voice interactions are now fully traceable with structured events stored in SQLite and accessible via HTTP API.
+The Hub service acts as the central nervous system of the Loqa platform, orchestrating the flow from voice input to actionable commands. With Milestone 2, all voice interactions are now fully traceable with structured events stored in SQLite and accessible via HTTP API.
 
 ## Configuration
 
