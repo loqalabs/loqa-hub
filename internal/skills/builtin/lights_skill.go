@@ -175,15 +175,15 @@ func (s *LightsSkill) performLightingAction(action, location string) (bool, stri
 	
 	switch action {
 	case "on":
-		return true, fmt.Sprintf("Turned on the lights")
+		return true, "Turned on the lights"
 	case "off":
-		return true, fmt.Sprintf("Turned off the lights")
+		return true, "Turned off the lights"
 	case "dim":
-		return true, fmt.Sprintf("Dimmed the lights")
+		return true, "Dimmed the lights"
 	case "brighten":
-		return true, fmt.Sprintf("Brightened the lights")
+		return true, "Brightened the lights"
 	case "toggle":
-		return true, fmt.Sprintf("Toggled the lights")
+		return true, "Toggled the lights"
 	default:
 		return false, fmt.Sprintf("don't understand the action: %s", action)
 	}

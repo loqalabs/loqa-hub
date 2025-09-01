@@ -70,9 +70,9 @@ func (l *DefaultSkillLoader) LoadSkill(ctx context.Context, skillPath string) (S
 	case SandboxProcess:
 		return l.loadProcessPlugin(ctx, skillPath, &manifest)
 	case SandboxWASM:
-		return nil, fmt.Errorf("WASM sandbox mode not implemented")
+		return nil, fmt.Errorf("wasm sandbox mode not implemented")
 	case SandboxDocker:
-		return nil, fmt.Errorf("Docker sandbox mode not implemented")
+		return nil, fmt.Errorf("docker sandbox mode not implemented")
 	default:
 		return nil, fmt.Errorf("unsupported sandbox mode: %s", manifest.SandboxMode)
 	}
