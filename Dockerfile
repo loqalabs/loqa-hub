@@ -1,8 +1,8 @@
 # Go builder stage  
-FROM golang:1.24-alpine AS go-builder
+FROM golang:1.24rc1-alpine AS go-builder
 
 # Install build dependencies for whisper.cpp
-RUN apk add --no-cache git build-base cmake
+RUN apk add --no-cache git build-base cmake binutils gcc g++ musl-dev linux-headers
 
 # Enable CGO for whisper.cpp integration
 ENV CGO_ENABLED=1
@@ -37,7 +37,19 @@ WORKDIR /app/loqa-hub
 # Download go modules
 RUN go mod download
 
-# Build the hub service with whisper support  
+# Build the hub service with whisper support
+# Debug: Check for linker and build tools
+RUN which gcc && which ld && which ar
+
+# Set up proper linker paths
+ENV PATH="/usr/bin:$PATH"
+ENV CC="gcc"
+ENV CXX="g++"
+
+# Set explicit CGO flags for linking
+ENV CGO_LDFLAGS="-L/tmp/whisper.cpp/build/src -L/tmp/whisper.cpp/build/ggml/src -lwhisper -lggml -lggml-base -lggml-cpu -lm -lstdc++ -fopenmp"
+ENV CGO_CFLAGS="-I/tmp/whisper.cpp/include -I/tmp/whisper.cpp/ggml/include"
+
 RUN go build -tags whisper -o loqa-hub ./cmd
 
 # Runtime stage
