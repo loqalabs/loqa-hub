@@ -2,7 +2,7 @@
 FROM golang:1.24rc1-alpine AS go-builder
 
 # Install build dependencies for whisper.cpp
-RUN apk add --no-cache git build-base cmake binutils gcc g++ musl-dev linux-headers
+RUN apk add --no-cache git build-base cmake binutils gcc g++ musl-dev linux-headers binutils-gold
 
 # Enable CGO for whisper.cpp integration
 ENV CGO_ENABLED=1
@@ -46,9 +46,12 @@ ENV PATH="/usr/bin:$PATH"
 ENV CC="gcc"
 ENV CXX="g++"
 
-# Set explicit CGO flags for linking
-ENV CGO_LDFLAGS="-L/tmp/whisper.cpp/build/src -L/tmp/whisper.cpp/build/ggml/src -lwhisper -lggml -lggml-base -lggml-cpu -lm -lstdc++ -fopenmp"
+# Disable gold linker and use traditional ld
+ENV CGO_LDFLAGS="-fuse-ld=bfd -L/tmp/whisper.cpp/build/src -L/tmp/whisper.cpp/build/ggml/src -lwhisper -lggml -lggml-base -lggml-cpu -lm -lstdc++ -fopenmp"
 ENV CGO_CFLAGS="-I/tmp/whisper.cpp/include -I/tmp/whisper.cpp/ggml/include"
+
+# Create symlink for ld if missing  
+RUN ln -sf /usr/bin/ld.bfd /usr/bin/ld
 
 RUN go build -tags whisper -o loqa-hub ./cmd
 
