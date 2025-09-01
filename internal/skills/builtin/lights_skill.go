@@ -46,8 +46,8 @@ func NewLightsSkill(logger *zap.Logger) skills.SkillPlugin {
 	}
 }
 
-// Init initializes the lights skill
-func (s *LightsSkill) Init(ctx context.Context, config *skills.SkillConfig) error {
+// Initialize initializes the lights skill
+func (s *LightsSkill) Initialize(ctx context.Context, config *skills.SkillConfig) error {
 	s.config = config
 	s.status.State = skills.SkillStateReady
 	s.status.Healthy = true
@@ -59,13 +59,34 @@ func (s *LightsSkill) Init(ctx context.Context, config *skills.SkillConfig) erro
 	return nil
 }
 
-// Shutdown shuts down the lights skill
-func (s *LightsSkill) Shutdown(ctx context.Context) error {
+// Teardown shuts down the lights skill
+func (s *LightsSkill) Teardown(ctx context.Context) error {
 	s.status.State = skills.SkillStateShutdown
 	s.status.Healthy = false
 	
 	s.logger.Info("Shutdown lights skill")
 	return nil
+}
+
+// CanHandle determines if this skill can handle the given intent
+func (s *LightsSkill) CanHandle(intent skills.VoiceIntent) bool {
+	transcript := strings.ToLower(intent.Transcript)
+	
+	// Check for lighting-related keywords
+	lightingKeywords := []string{
+		"light", "lights", "lighting",
+		"turn on", "turn off", "switch on", "switch off",
+		"dim", "brighten", "bright", "dark",
+		"lamp", "lamps",
+	}
+	
+	for _, keyword := range lightingKeywords {
+		if strings.Contains(transcript, keyword) {
+			return true
+		}
+	}
+	
+	return false
 }
 
 // HandleIntent processes a voice intent for lighting control
@@ -169,7 +190,7 @@ func (s *LightsSkill) performLightingAction(action, location string) (bool, stri
 }
 
 // GetManifest returns the skill manifest
-func (s *LightsSkill) GetManifest() *skills.SkillManifest {
+func (s *LightsSkill) GetManifest() (*skills.SkillManifest, error) {
 	return &skills.SkillManifest{
 		ID:          "builtin.lights",
 		Name:        "Lights Control",
@@ -178,12 +199,35 @@ func (s *LightsSkill) GetManifest() *skills.SkillManifest {
 		Author:      "Loqa Labs",
 		License:     "AGPL-3.0",
 		
-		IntentPatterns: []string{
-			"lights_on",
-			"lights_off",
-			"lights_dim",
-			"lights_brighten",
-			"lights_toggle",
+		IntentPatterns: []skills.IntentPattern{
+			{
+				Name:       "lights_on",
+				Examples:   []string{"turn on the lights", "switch on lights", "lights on"},
+				Confidence: 0.8,
+				Priority:   1,
+				Enabled:    true,
+			},
+			{
+				Name:       "lights_off",
+				Examples:   []string{"turn off the lights", "switch off lights", "lights off"},
+				Confidence: 0.8,
+				Priority:   1,
+				Enabled:    true,
+			},
+			{
+				Name:       "lights_dim",
+				Examples:   []string{"dim the lights", "lower the lights", "make it darker"},
+				Confidence: 0.8,
+				Priority:   1,
+				Enabled:    true,
+			},
+			{
+				Name:       "lights_brighten",
+				Examples:   []string{"brighten the lights", "make it brighter", "lights up"},
+				Confidence: 0.8,
+				Priority:   1,
+				Enabled:    true,
+			},
 		},
 		
 		Languages:   []string{"en"},
@@ -201,9 +245,11 @@ func (s *LightsSkill) GetManifest() *skills.SkillManifest {
 		LoadOnStartup: true,
 		Singleton:     true,
 		Timeout:       "30s",
+		SandboxMode:   skills.SandboxNone,
+		TrustLevel:    skills.TrustSystem,
 		
 		Keywords: []string{"lights", "lighting", "smart home", "automation"},
-	}
+	}, nil
 }
 
 // GetStatus returns the current skill status
@@ -235,11 +281,18 @@ func (s *LightsSkill) GetConfigSchema() *skills.ConfigSchema {
 	}
 }
 
+// GetConfig returns the skill configuration
+func (s *LightsSkill) GetConfig() (*skills.SkillConfig, error) {
+	return s.config, nil
+}
+
 // UpdateConfig updates the skill configuration
-func (s *LightsSkill) UpdateConfig(ctx context.Context, config map[string]interface{}) error {
+func (s *LightsSkill) UpdateConfig(ctx context.Context, config *skills.SkillConfig) error {
+	s.config = config
 	// Validate and apply new configuration
 	s.logger.Info("Updated lights skill configuration", 
-		zap.Any("config", config))
+		zap.String("skill_id", config.SkillID),
+		zap.String("version", config.Version))
 	return nil
 }
 
