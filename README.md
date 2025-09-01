@@ -26,6 +26,16 @@ Loqa Hub is the core service that handles:
 - 📡 **Event Publishing**: Publishes parsed commands to NATS message bus
 - 🔒 **Privacy-First**: All processing happens locally, no cloud dependencies
 
+### 🆕 Milestone 4a: Modular Skill Plugin Architecture
+
+- 🧩 **Skill Plugin System**: Extensible architecture for voice command handling
+- 📋 **Manifest-Driven**: JSON-based skill configuration with permissions and sandboxing
+- 🔄 **Dynamic Loading**: Load, unload, and reload skills at runtime
+- 🛡️ **Security**: Trust levels and sandbox modes for safe skill execution
+- 🎛️ **Management Tools**: CLI and web UI for skill administration
+- 🌐 **REST API**: Complete skill management via `/api/skills` endpoints
+- 🔧 **Multi-Format Support**: Go plugins, process-based skills, and future WASM support
+
 ### 🆕 Milestone 2: Observability & Event Tracking
 
 - 📊 **Voice Event Tracking**: Every interaction generates structured events with full traceability
@@ -57,11 +67,21 @@ The Hub service acts as the central nervous system of the Loqa platform, orchest
 
 ### API Access
 
-The Hub exposes a RESTful API for accessing voice events:
+The Hub exposes RESTful APIs for voice events and skill management:
 
+**Voice Events API:**
 - `GET /api/voice-events` - List events with pagination and filtering
 - `GET /api/voice-events/{uuid}` - Get specific event details
 - `POST /api/voice-events` - Create events (testing/integrations)
+
+**Skills Management API:**
+- `GET /api/skills` - List all loaded skills with status
+- `GET /api/skills/{id}` - Get detailed skill information
+- `POST /api/skills` - Load a new skill from path
+- `DELETE /api/skills/{id}` - Unload a skill
+- `POST /api/skills/{id}/enable` - Enable a skill
+- `POST /api/skills/{id}/disable` - Disable a skill
+- `POST /api/skills/{id}/reload` - Reload a skill
 
 See [`API.md`](API.md) for complete endpoint documentation with examples.
 
