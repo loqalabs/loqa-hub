@@ -88,9 +88,10 @@ func (wt *WhisperTranscriber) Transcribe(audioData []float32, sampleRate int) (s
 }
 
 // Close cleans up the Whisper model
-func (wt *WhisperTranscriber) Close() {
+func (wt *WhisperTranscriber) Close() error {
 	if wt.model != nil {
 		wt.model.Close()
 		log.Println("🧠 Whisper model closed")
 	}
+	return nil
 }

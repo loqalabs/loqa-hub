@@ -17,11 +17,14 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 
-# Setup script for Whisper.cpp local development
+# Setup script for Whisper.cpp local development (fallback mode)
+# NOTE: Loqa now uses faster-whisper gRPC service by default (USE_GRPC_WHISPER=true)
+# This script sets up whisper.cpp as a fallback option for development
 
 set -e
 
-echo "🧠 Setting up Whisper.cpp for local development..."
+echo "🧠 Setting up Whisper.cpp for fallback development..."
+echo "ℹ️  Note: Loqa uses faster-whisper gRPC service by default"
 
 # Check if already exists
 if [ -d "/tmp/whisper.cpp" ]; then
@@ -55,6 +58,9 @@ fi
 echo "✅ Whisper.cpp setup complete!"
 echo ""
 echo "🏃 You can now run: ./tools/build.sh"
-echo "🔧 Or set environment variables:"
+echo "🔧 To use whisper.cpp instead of gRPC service:"
+echo "   export USE_GRPC_WHISPER=false"
 echo "   export CGO_CFLAGS=\"-I/tmp/whisper.cpp/include\""
 echo "   export CGO_LDFLAGS=\"-L/tmp/whisper.cpp -lwhisper -lm -lstdc++\""
+echo ""
+echo "💡 For production use, keep USE_GRPC_WHISPER=true (default)"
