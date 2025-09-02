@@ -25,7 +25,7 @@ import (
 	"net/http"
 
 	"google.golang.org/grpc"
-	pb "github.com/loqalabs/loqa-proto/go"
+	pb "github.com/loqalabs/loqa-proto/go/audio"
 	"github.com/loqalabs/loqa-hub/internal/api"
 	grpcservice "github.com/loqalabs/loqa-hub/internal/grpc"
 	"github.com/loqalabs/loqa-hub/internal/storage"

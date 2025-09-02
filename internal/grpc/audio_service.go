@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	pb "github.com/loqalabs/loqa-proto/go"
+	pb "github.com/loqalabs/loqa-proto/go/audio"
 	"github.com/loqalabs/loqa-hub/internal/events"
 	"github.com/loqalabs/loqa-hub/internal/llm"
 	"github.com/loqalabs/loqa-hub/internal/logging"
