@@ -19,6 +19,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -32,15 +33,13 @@ import (
 )
 
 type Config struct {
-	Port         string
-	GRPCPort     string
-	ModelPath    string  // For whisper.cpp mode
-	WhisperAddr  string  // For gRPC mode
-	UseGRPCWhisper bool  // Toggle between modes
-	ASRURL       string
-	IntentURL    string
-	TTSURL       string
-	DBPath       string
+	Port        string
+	GRPCPort    string
+	WhisperAddr string  // gRPC whisper service address
+	ASRURL      string
+	IntentURL   string
+	TTSURL      string
+	DBPath      string
 }
 
 type Server struct {
@@ -74,16 +73,8 @@ func New(cfg Config) *Server {
 	// Create gRPC server and audio service
 	grpcServer := grpc.NewServer()
 	
-	var audioService *grpcservice.AudioService
-	
-	if cfg.UseGRPCWhisper {
-		log.Printf("🎙️  Using gRPC Whisper service at: %s", cfg.WhisperAddr)
-		audioService, err = grpcservice.NewAudioServiceWithGRPC(cfg.WhisperAddr, eventsStore)
-	} else {
-		log.Printf("🎙️  Using whisper.cpp with model: %s", cfg.ModelPath)
-		audioService, err = grpcservice.NewAudioService(cfg.ModelPath, eventsStore)
-	}
-	
+	log.Printf("🎙️  Using gRPC Whisper service at: %s", cfg.WhisperAddr)
+	audioService, err := grpcservice.NewAudioService(cfg.WhisperAddr, eventsStore)
 	if err != nil {
 		log.Fatalf("Failed to create audio service: %v", err)
 	}
@@ -135,10 +126,46 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/voice-events", s.apiHandler.HandleVoiceEvents)
 	s.mux.HandleFunc("/api/voice-events/", s.apiHandler.HandleVoiceEventByID)
 	
+	// Active Pucks API
+	s.mux.HandleFunc("/api/active-pucks", s.handleActivePucks)
+	
 	// future: /wake, /stream, /session, etc.
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	log.Println("Health check received")
 	fmt.Fprintln(w, "ok")
+}
+
+func (s *Server) handleActivePucks(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	activePucks := s.audioService.GetActivePucks()
+	count := len(activePucks)
+
+	response := struct {
+		Count int                     `json:"count"`
+		Pucks map[string]interface{} `json:"pucks"`
+	}{
+		Count: count,
+		Pucks: make(map[string]interface{}),
+	}
+
+	for puckID, lastActivity := range activePucks {
+		response.Pucks[puckID] = map[string]interface{}{
+			"last_activity": lastActivity.Format("2006-01-02T15:04:05Z07:00"),
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Error encoding active pucks response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Active pucks API called - returned %d active connections", count)
 }

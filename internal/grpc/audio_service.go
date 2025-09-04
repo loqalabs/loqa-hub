@@ -23,6 +23,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -37,23 +38,16 @@ import (
 // AudioService implements the gRPC AudioService
 type AudioService struct {
 	pb.UnimplementedAudioServiceServer
-	transcriber    llm.Transcriber
-	commandParser  *llm.CommandParser
-	natsService    *messaging.NATSService
-	eventsStore    *storage.VoiceEventsStore
+	transcriber      llm.Transcriber
+	commandParser    *llm.CommandParser
+	natsService      *messaging.NATSService
+	eventsStore      *storage.VoiceEventsStore
+	activeConnections map[string]time.Time // puck_id -> last activity time
+	connectionsMutex  sync.RWMutex
 }
 
-// NewAudioService creates a new audio service with whisper.cpp (legacy)
-func NewAudioService(modelPath string, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
-	transcriber, err := llm.NewWhisperTranscriber(modelPath)
-	if err != nil {
-		return nil, err
-	}
-	return createAudioService(transcriber, eventsStore)
-}
-
-// NewAudioServiceWithGRPC creates a new audio service using gRPC whisper service
-func NewAudioServiceWithGRPC(whisperAddr string, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
+// NewAudioService creates a new audio service using gRPC whisper service
+func NewAudioService(whisperAddr string, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
 	transcriber, err := llm.NewWhisperGRPCClient(whisperAddr)
 	if err != nil {
 		return nil, err
@@ -101,17 +95,35 @@ func createAudioService(transcriber llm.Transcriber, eventsStore *storage.VoiceE
 		}
 	}()
 
-	return &AudioService{
-		transcriber:   transcriber,
-		commandParser: commandParser,
-		natsService:   natsService,
-		eventsStore:   eventsStore,
-	}, nil
+	service := &AudioService{
+		transcriber:       transcriber,
+		commandParser:     commandParser,
+		natsService:       natsService,
+		eventsStore:       eventsStore,
+		activeConnections: make(map[string]time.Time),
+		connectionsMutex:  sync.RWMutex{},
+	}
+	
+	// Start background cleanup routine for stale connections
+	go service.cleanupStaleConnections()
+	
+	return service, nil
 }
 
 // StreamAudio handles bidirectional audio streaming from pucks
 func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) error {
 	logging.Sugar.Info("🎙️  Hub: New audio stream connected")
+	var currentPuckID string
+
+	defer func() {
+		// Remove puck from active connections when stream ends
+		if currentPuckID != "" {
+			as.connectionsMutex.Lock()
+			delete(as.activeConnections, currentPuckID)
+			as.connectionsMutex.Unlock()
+			logging.Sugar.Infof("🎙️  Hub: Puck %s disconnected", currentPuckID)
+		}
+	}()
 
 	for {
 		// Receive audio chunk from puck
@@ -124,6 +136,17 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			logging.LogError(err, "Error receiving audio chunk")
 			return err
 		}
+
+		// Track active connection (first time we see this puck in this stream)
+		if currentPuckID == "" {
+			currentPuckID = chunk.PuckId
+			logging.Sugar.Infof("🎙️  Hub: Puck %s connected", currentPuckID)
+		}
+		
+		// Update last activity time for this puck (keeps connection alive)
+		as.connectionsMutex.Lock()
+		as.activeConnections[chunk.PuckId] = time.Now()
+		as.connectionsMutex.Unlock()
 
 		logging.LogAudioProcessing(chunk.PuckId, "received", 
 			zap.Int("bytes", len(chunk.AudioData)),
@@ -282,6 +305,12 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 
 			commandStr := command.Intent
 			responseText := command.Response
+			
+			// Handle built-in skills
+			if command.Intent == "time_query" {
+				currentTime := time.Now().Format("3:04 PM")
+				responseText = fmt.Sprintf("It's currently %s", currentTime)
+			}
 			
 			logging.LogAudioProcessing(chunk.PuckId, "command_parsed",
 				zap.String("event_uuid", voiceEvent.UUID),
@@ -491,6 +520,53 @@ func (as *AudioService) mapIntentToAction(intent string) string {
 		"volume":   "volume",
 	}
 	return actionMap[intent]
+}
+
+// GetActivePucksCount returns the number of currently connected pucks
+func (as *AudioService) GetActivePucksCount() int {
+	as.connectionsMutex.RLock()
+	defer as.connectionsMutex.RUnlock()
+	return len(as.activeConnections)
+}
+
+// GetActivePucks returns a list of currently connected puck IDs with their last activity time
+func (as *AudioService) GetActivePucks() map[string]time.Time {
+	as.connectionsMutex.RLock()
+	defer as.connectionsMutex.RUnlock()
+	
+	// Create a copy to avoid race conditions
+	result := make(map[string]time.Time)
+	for puckID, lastActivity := range as.activeConnections {
+		result[puckID] = lastActivity
+	}
+	return result
+}
+
+// cleanupStaleConnections removes pucks that haven't been seen in 30 seconds
+func (as *AudioService) cleanupStaleConnections() {
+	ticker := time.NewTicker(10 * time.Second) // Check every 10 seconds
+	defer ticker.Stop()
+	
+	for range ticker.C {
+		as.connectionsMutex.Lock()
+		now := time.Now()
+		stalePucks := []string{}
+		
+		// Find pucks that haven't been active in 30 seconds
+		for puckID, lastActivity := range as.activeConnections {
+			if now.Sub(lastActivity) > 30*time.Second {
+				stalePucks = append(stalePucks, puckID)
+			}
+		}
+		
+		// Remove stale connections
+		for _, puckID := range stalePucks {
+			delete(as.activeConnections, puckID)
+			logging.Sugar.Infof("🎙️  Hub: Puck %s timed out (inactive for >30s)", puckID)
+		}
+		
+		as.connectionsMutex.Unlock()
+	}
 }
 
 // storeVoiceEvent stores a voice event in the database

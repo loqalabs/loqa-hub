@@ -112,7 +112,7 @@ Voice command: "%s"
 
 Classify this command and respond with ONLY a JSON object in this exact format:
 {
-  "intent": "one of: turn_on, turn_off, greeting, question, unknown",
+  "intent": "one of: turn_on, turn_off, greeting, question, time_query, unknown",
   "entities": {
     "device": "lights, music, tv, etc. or empty string if none",
     "location": "bedroom, kitchen, living room, etc. or empty string if none"
@@ -125,7 +125,8 @@ Rules:
 - turn_on: user wants to turn something on (lights, music, etc.)
 - turn_off: user wants to turn something off 
 - greeting: user is saying hello, hi, good morning, etc.
-- question: user is asking a question
+- question: user is asking a question (not about time)
+- time_query: user is asking for the current time ("what time is it", "tell me the time", etc.)
 - unknown: unclear or unrecognized command
 - confidence should be 0.0-1.0 based on how clear the intent is
 - response should be natural and conversational

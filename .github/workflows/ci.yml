@@ -44,11 +44,31 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24.3'
+        go-version: '1.22.2'
         cache-dependency-path: 'loqa-hub/go.sum'
+
+    - name: Cache Go build
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
 
     - name: Verify Go version
       run: go version
+
+    - name: Check Go version consistency
+      run: |
+        ROOT=$(grep '^go ' loqa-hub/go.mod | cut -d' ' -f2)
+        PROTO=$(grep '^go ' loqa-proto/go/go.mod | cut -d' ' -f2)
+        if [ "$ROOT" != "$PROTO" ]; then
+          echo "❌ Go version mismatch: loqa-hub=$ROOT vs loqa-proto=$PROTO"
+          exit 1
+        fi
+        echo "✅ Go version check passed: $ROOT"
 
     - name: Download dependencies
       run: go mod download
@@ -73,9 +93,53 @@ jobs:
 
     - name: Run staticcheck
       run: |
-        go install honnef.co/go/tools/cmd/staticcheck@latest
+        go install honnef.co/go/tools/cmd/staticcheck@v0.5.1
         staticcheck ./...
       working-directory: loqa-hub
+
+  mod-check:
+    name: Verify Go Module and Build
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout loqa-hub
+        uses: actions/checkout@v4
+        with:
+          path: loqa-hub
+
+      - name: Checkout loqa-proto
+        uses: actions/checkout@v4
+        with:
+          repository: loqalabs/loqa-proto
+          path: loqa-proto
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.2'
+          cache-dependency-path: 'loqa-hub/go.sum'
+
+      - name: Cache Go build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Check Go module is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code || (echo "::error::go.mod/go.sum are not tidy" && exit 1)
+        working-directory: loqa-hub
+
+      - name: Verify build
+        run: go build ./...
+        working-directory: loqa-hub
+        
 
   build:
     name: Build
@@ -97,13 +161,23 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24.3'
+        go-version: '1.22.2'
         cache-dependency-path: 'loqa-hub/go.sum'
+
+    - name: Cache Go build
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
 
     - name: Verify Go version
       run: go version
 
-    - name: Build binary (without whisper for CI)
+    - name: Build loqa-hub binary
       run: |
         go build -v -ldflags="-w -s" -o bin/loqa-hub ./cmd
       working-directory: loqa-hub
@@ -122,6 +196,7 @@ jobs:
     
     permissions:
       contents: read
+      packages: write
 
     steps:
     - name: Checkout loqa-hub
@@ -161,7 +236,7 @@ jobs:
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
-        context: .
+        context: ./loqa-hub
         file: ./loqa-hub/Dockerfile
         platforms: linux/amd64,linux/arm64
         push: true
@@ -169,6 +244,13 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+
+    - name: Generate SBOM
+      uses: anchore/sbom-action@v0
+      with:
+        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        format: spdx-json
+        output-file: sbom.spdx.json
 
   security:
     name: Security Scan
