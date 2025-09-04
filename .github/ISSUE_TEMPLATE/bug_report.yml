@@ -1,5 +1,5 @@
 name: Bug Report
-description: File a bug report to help us improve Loqa Hub
+description: File a bug report to help us improve the Loqa Hub
 title: "[Bug]: "
 labels: ["bug", "triage"]
 assignees:
@@ -47,7 +47,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: What version of Loqa Hub are you running?
+      description: What version of the Loqa Hub are you running?
       placeholder: ex. v0.1.0, main branch, commit hash
     validations:
       required: true
