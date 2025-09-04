@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   check-commit-messages:
     name: Check for AI Tool Attribution
