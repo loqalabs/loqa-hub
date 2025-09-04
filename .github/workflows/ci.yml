@@ -31,18 +31,18 @@ jobs:
 
     steps:
     - name: Checkout loqa-hub
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         path: loqa-hub
 
     - name: Checkout loqa-proto
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: loqalabs/loqa-proto
         path: loqa-proto
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: '1.22.2'
         cache-dependency-path: 'loqa-hub/go.sum'
@@ -81,7 +81,7 @@ jobs:
         NATS_URL: nats://localhost:4222
 
     - name: Upload coverage reports
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v5
       with:
         file: ./loqa-hub/coverage.out
         flags: hub
@@ -104,18 +104,18 @@ jobs:
 
     steps:
       - name: Checkout loqa-hub
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: loqa-hub
 
       - name: Checkout loqa-proto
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: loqalabs/loqa-proto
           path: loqa-proto
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.22.2'
           cache-dependency-path: 'loqa-hub/go.sum'
@@ -148,18 +148,18 @@ jobs:
     
     steps:
     - name: Checkout loqa-hub
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         path: loqa-hub
 
     - name: Checkout loqa-proto
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: loqalabs/loqa-proto
         path: loqa-proto
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: '1.22.2'
         cache-dependency-path: 'loqa-hub/go.sum'
@@ -200,12 +200,12 @@ jobs:
 
     steps:
     - name: Checkout loqa-hub
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         path: loqa-hub
 
     - name: Checkout loqa-proto
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: loqalabs/loqa-proto
         path: loqa-proto
@@ -234,7 +234,7 @@ jobs:
           type=raw,value=latest,enable={{is_default_branch}}
 
     - name: Build and push Docker image
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: ./loqa-hub
         file: ./loqa-hub/Dockerfile
@@ -263,7 +263,7 @@ jobs:
     
     steps:
     - name: Checkout loqa-hub
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
