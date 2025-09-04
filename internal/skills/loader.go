@@ -58,6 +58,7 @@ func (l *DefaultSkillLoader) LoadSkill(ctx context.Context, skillPath string) (S
 	// Resolve absolute manifest path
 	manifestPath := filepath.Join(skillPath, "skill.json")
 	absManifestPath, err := filepath.Abs(manifestPath)
+	if err != nil {
 		return nil, fmt.Errorf("failed to resolve skill path: %w", err)
 	}
 	absSkillsRoot, err := filepath.Abs(SkillsRootDir)
