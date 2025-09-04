@@ -25,9 +25,20 @@ import (
 	"os"
 	"path/filepath"
 	"plugin"
+	"strings"
 
 	"github.com/loqalabs/loqa-hub/internal/logging"
 )
+
+// containsPathTraversal checks for path traversal attempts
+func containsPathTraversal(path string) bool {
+	cleaned := filepath.Clean(path)
+	// Reject if path contains ".." as a directory or any path traversal pattern
+	if strings.Contains(cleaned, "..") || strings.Contains(path, "../") || strings.Contains(path, "..\\") {
+		return true
+	}
+	return false
+}
 
 // DefaultSkillLoader is the default implementation of SkillLoader
 type DefaultSkillLoader struct {
@@ -51,6 +62,14 @@ func (l *DefaultSkillLoader) SupportedModes() []SandboxMode {
 
 // LoadSkill loads a skill from the specified path
 func (l *DefaultSkillLoader) LoadSkill(ctx context.Context, skillPath string) (SkillPlugin, error) {
+	// Validate skillPath to prevent path traversal
+	if !filepath.IsAbs(skillPath) {
+		return nil, fmt.Errorf("skillPath must be absolute")
+	}
+	if containsPathTraversal(skillPath) {
+		return nil, fmt.Errorf("skillPath contains invalid path traversal")
+	}
+
 	// Load manifest
 	manifestPath := filepath.Join(skillPath, "skill.json")
 	manifestData, err := os.ReadFile(manifestPath)
@@ -76,6 +95,12 @@ func (l *DefaultSkillLoader) LoadSkill(ctx context.Context, skillPath string) (S
 	default:
 		return nil, fmt.Errorf("unsupported sandbox mode: %s", manifest.SandboxMode)
 	}
+	// ...existing code...
+
+	// ...existing code...
+
+	// containsPathTraversal checks for path traversal attempts
+
 }
 
 // UnloadSkill unloads a skill plugin
@@ -119,7 +144,7 @@ func (l *DefaultSkillLoader) loadGoPlugin(ctx context.Context, skillPath string,
 	// Create the skill instance
 	skill := newSkillFunc()
 	logging.Sugar.Infow("Loaded Go plugin skill", "skill", manifest.ID, "path", pluginPath)
-	
+
 	return skill, nil
 }
 
@@ -147,9 +172,9 @@ func (l *DefaultSkillLoader) loadProcessPlugin(ctx context.Context, skillPath st
 
 	// Create a process-based skill wrapper
 	processSkill := &ProcessSkill{
-		manifest:   manifest,
-		execPath:   execPath,
-		skillPath:  skillPath,
+		manifest:  manifest,
+		execPath:  execPath,
+		skillPath: skillPath,
 	}
 
 	logging.Sugar.Infow("Loaded process plugin skill", "skill", manifest.ID, "path", execPath)

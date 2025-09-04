@@ -34,38 +34,38 @@ import (
 )
 
 var (
-	ErrSkillNotFound       = errors.New("skill not found")
-	ErrSkillAlreadyLoaded  = errors.New("skill already loaded")
-	ErrInvalidManifest     = errors.New("invalid skill manifest")
-	ErrPermissionDenied    = errors.New("permission denied")
-	ErrSkillInitFailed     = errors.New("skill initialization failed")
-	ErrNoSkillCanHandle    = errors.New("no skill can handle this intent")
+	ErrSkillNotFound      = errors.New("skill not found")
+	ErrSkillAlreadyLoaded = errors.New("skill already loaded")
+	ErrInvalidManifest    = errors.New("invalid skill manifest")
+	ErrPermissionDenied   = errors.New("permission denied")
+	ErrSkillInitFailed    = errors.New("skill initialization failed")
+	ErrNoSkillCanHandle   = errors.New("no skill can handle this intent")
 )
 
 // SkillManagerConfig holds configuration for the skill manager
 type SkillManagerConfig struct {
-	SkillsDir      string        `json:"skills_dir"`
-	AutoLoad       bool          `json:"auto_load"`
-	MaxSkills      int           `json:"max_skills"`
-	LoadTimeout    time.Duration `json:"load_timeout"`
-	DefaultTrust   TrustLevel    `json:"default_trust"`
-	AllowedModes   []SandboxMode `json:"allowed_sandbox_modes"`
-	ConfigStore    string        `json:"config_store"`
+	SkillsDir    string        `json:"skills_dir"`
+	AutoLoad     bool          `json:"auto_load"`
+	MaxSkills    int           `json:"max_skills"`
+	LoadTimeout  time.Duration `json:"load_timeout"`
+	DefaultTrust TrustLevel    `json:"default_trust"`
+	AllowedModes []SandboxMode `json:"allowed_sandbox_modes"`
+	ConfigStore  string        `json:"config_store"`
 }
 
 // SkillManager manages the lifecycle of skills
 type SkillManager struct {
-	config  SkillManagerConfig
-	skills  map[string]*LoadedSkill
-	mutex   sync.RWMutex
-	loader  SkillLoader
+	config SkillManagerConfig
+	skills map[string]*LoadedSkill
+	mutex  sync.RWMutex
+	loader SkillLoader
 }
 
 // LoadedSkill wraps a SkillPlugin with additional runtime information
 type LoadedSkill struct {
-	Plugin   SkillPlugin
-	Info     *SkillInfo
-	mutex    sync.RWMutex
+	Plugin SkillPlugin
+	Info   *SkillInfo
+	mutex  sync.RWMutex
 }
 
 // SkillLoader defines the interface for loading skills
@@ -94,7 +94,7 @@ func NewSkillManager(config SkillManagerConfig, loader SkillLoader) *SkillManage
 // Start initializes the skill manager and loads skills
 func (sm *SkillManager) Start(ctx context.Context) error {
 	logging.Sugar.Infow("Starting skill manager", "skills_dir", sm.config.SkillsDir)
-	
+
 	if sm.config.AutoLoad {
 		if err := sm.loadAllSkills(ctx); err != nil {
 			logging.Sugar.Warnw("Failed to load some skills during startup", "error", err)
@@ -198,9 +198,9 @@ func (sm *SkillManager) LoadSkill(ctx context.Context, skillPath string) error {
 
 	sm.skills[manifest.ID] = loadedSkill
 
-	logging.Sugar.Infow("Skill loaded successfully", 
-		"skill_id", manifest.ID, 
-		"name", manifest.Name, 
+	logging.Sugar.Infow("Skill loaded successfully",
+		"skill_id", manifest.ID,
+		"name", manifest.Name,
 		"version", manifest.Version)
 
 	return nil
@@ -249,10 +249,10 @@ func (sm *SkillManager) HandleIntent(ctx context.Context, intent *VoiceIntent) (
 	var candidates []*LoadedSkill
 	for _, loadedSkill := range sm.skills {
 		loadedSkill.mutex.RLock()
-		if loadedSkill.Info.Status.State == SkillStateReady && 
-		   loadedSkill.Info.Status.Healthy &&
-		   loadedSkill.Info.Config.Enabled &&
-		   loadedSkill.Plugin.CanHandle(*intent) {
+		if loadedSkill.Info.Status.State == SkillStateReady &&
+			loadedSkill.Info.Status.Healthy &&
+			loadedSkill.Info.Config.Enabled &&
+			loadedSkill.Plugin.CanHandle(*intent) {
 			candidates = append(candidates, loadedSkill)
 		}
 		loadedSkill.mutex.RUnlock()
@@ -278,9 +278,9 @@ func (sm *SkillManager) HandleIntent(ctx context.Context, intent *VoiceIntent) (
 			candidate.Info.ErrorCount++
 			candidate.Info.LastError = err.Error()
 			candidate.mutex.Unlock()
-			
-			logging.Sugar.Warnw("Skill execution failed", 
-				"skill", candidate.Info.Manifest.ID, 
+
+			logging.Sugar.Warnw("Skill execution failed",
+				"skill", candidate.Info.Manifest.ID,
 				"error", err)
 			continue
 		}
@@ -400,6 +400,11 @@ func (sm *SkillManager) loadAllSkills(ctx context.Context) error {
 		}
 
 		if d.IsDir() && path != sm.config.SkillsDir {
+			// Validate path
+			if !filepath.IsAbs(path) || containsPathTraversal(path) {
+				logging.Sugar.Warnw("Skipped skill directory due to invalid path", "path", path)
+				return filepath.SkipDir
+			}
 			// Check if this directory contains a manifest
 			manifestPath := filepath.Join(path, "skill.json")
 			if _, err := os.Stat(manifestPath); err == nil {
