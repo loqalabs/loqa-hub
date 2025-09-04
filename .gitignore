@@ -85,4 +85,4 @@ docker-compose.override.yml
 *.p12
 
 # Local config overrides
-config.local.yml
+config.local.yml# Trigger CI after history cleanup
