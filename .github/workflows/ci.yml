@@ -81,7 +81,7 @@ jobs:
         NATS_URL: nats://localhost:4222
 
     - name: Upload coverage reports
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v5
       with:
         file: ./loqa-hub/coverage.out
         flags: hub
