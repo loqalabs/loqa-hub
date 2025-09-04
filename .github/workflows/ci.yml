@@ -193,15 +193,68 @@ jobs:
         name: loqa-hub-binary
         path: loqa-hub/bin/loqa-hub
 
-  docker:
-    name: Build and Push Docker Image
+  security:
+    name: Security Analysis
     runs-on: ubuntu-latest
-    needs: test
+    
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    
+    steps:
+    - name: Checkout loqa-hub
+      uses: actions/checkout@v5
+      with:
+        path: loqa-hub
+
+    - name: Checkout loqa-proto
+      uses: actions/checkout@v5
+      with:
+        repository: loqalabs/loqa-proto
+        path: loqa-proto
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: go
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.23.0'
+
+    - name: Build application for CodeQL
+      run: go build -v ./...
+      working-directory: loqa-hub
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: './loqa-hub'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results
+      if: always()
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  docker:
+    name: Build and Push Docker Image with Security
+    runs-on: ubuntu-latest
+    needs: [test, security]
     if: github.event_name != 'pull_request'
     
     permissions:
       contents: read
       packages: write
+      security-events: write
 
     steps:
     - name: Checkout loqa-hub
@@ -240,6 +293,7 @@ jobs:
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v6
+      id: build
       with:
         context: ./loqa-hub
         file: ./loqa-hub/Dockerfile
@@ -249,37 +303,31 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        sbom: true
+        provenance: true
 
     - name: Generate SBOM
       uses: anchore/sbom-action@v0
       with:
-        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
         format: spdx-json
         output-file: sbom.spdx.json
 
-  security:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
-    
-    steps:
-    - name: Checkout loqa-hub
-      uses: actions/checkout@v5
+    - name: Upload SBOM
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom-loqa-hub
+        path: sbom.spdx.json
 
-    - name: Run Trivy vulnerability scanner
+    - name: Scan container image
       uses: aquasecurity/trivy-action@master
       with:
-        scan-type: 'fs'
-        scan-ref: '.'
+        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
         format: 'sarif'
-        output: 'trivy-results.sarif'
+        output: 'container-scan-results.sarif'
 
-    - name: Upload Trivy scan results
+    - name: Upload container scan results
       if: always()
       uses: github/codeql-action/upload-sarif@v3
       with:
-        sarif_file: 'trivy-results.sarif'
+        sarif_file: 'container-scan-results.sarif'
