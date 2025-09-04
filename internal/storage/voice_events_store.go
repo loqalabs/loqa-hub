@@ -22,6 +22,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/loqalabs/loqa-hub/internal/events"
@@ -251,15 +252,23 @@ func (s *VoiceEventsStore) buildListQuery(options ListOptions) (string, []interf
 
 	// Apply sorting
 	sortBy := options.SortBy
-	if sortBy == "" {
+	// Whitelist valid sort columns
+	switch sortBy {
+	case "", "timestamp":
+		sortBy = "timestamp"
+	case "confidence":
+		sortBy = "confidence"
+	case "processing_time":
+		sortBy = "processing_time"
+	default:
 		sortBy = "timestamp"
 	}
-	
-	sortOrder := options.SortOrder
-	if sortOrder == "" {
+
+	sortOrder := strings.ToUpper(options.SortOrder)
+	if sortOrder != "ASC" && sortOrder != "DESC" {
 		sortOrder = "DESC"
 	}
-	
+
 	query += fmt.Sprintf(" ORDER BY %s %s", sortBy, sortOrder)
 
 	// Apply pagination
