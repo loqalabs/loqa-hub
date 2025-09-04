@@ -73,7 +73,7 @@ func (s *VoiceEventsStore) Insert(event *events.VoiceEvent) error {
 		return fmt.Errorf("failed to insert voice event: %w", err)
 	}
 
-	log.Printf("📝 Stored voice event: %s (PuckID: %s, Intent: %s)", 
+	log.Printf("📝 Stored voice event: %s (PuckID: %s, Intent: %s)",
 		event.UUID, event.PuckID, event.Intent)
 	return nil
 }
@@ -95,7 +95,7 @@ func (s *VoiceEventsStore) GetByUUID(uuid string) (*events.VoiceEvent, error) {
 // List retrieves voice events with pagination and filtering
 func (s *VoiceEventsStore) List(options ListOptions) ([]*events.VoiceEvent, error) {
 	query, args := s.buildListQuery(options)
-	
+
 	rows, err := s.db.DB().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query voice events: %w", err)
@@ -124,10 +124,10 @@ func (s *VoiceEventsStore) Count(options ListOptions) (int64, error) {
 	options.Limit = 0
 	options.Offset = 0
 	query, args := s.buildListQuery(options)
-	
+
 	// Replace SELECT fields with COUNT(*)
 	countQuery := "SELECT COUNT(*) FROM (" + query + ") as filtered"
-	
+
 	var count int64
 	err := s.db.DB().QueryRow(countQuery, args...).Scan(&count)
 	if err != nil {
@@ -203,11 +203,11 @@ type ListOptions struct {
 	Success   *bool // nil = all, true = success only, false = errors only
 	StartTime *time.Time
 	EndTime   *time.Time
-	
-	// Pagination  
+
+	// Pagination
 	Limit  int
 	Offset int
-	
+
 	// Sorting
 	SortBy    string // "timestamp", "confidence", "processing_time"
 	SortOrder string // "ASC", "DESC"
@@ -221,7 +221,7 @@ func (s *VoiceEventsStore) buildListQuery(options ListOptions) (string, []interf
 			   transcription, intent, entities, confidence,
 			   response_text, processing_time_ms, success, error_message
 		FROM voice_events WHERE 1=1`
-	
+
 	var args []interface{}
 
 	// Apply filters
@@ -251,31 +251,29 @@ func (s *VoiceEventsStore) buildListQuery(options ListOptions) (string, []interf
 	}
 
 	// Apply sorting
-	sortBy := options.SortBy
-	// Whitelist valid sort columns
-	switch sortBy {
-	case "", "timestamp":
-		sortBy = "timestamp"
-	case "confidence":
-		sortBy = "confidence"
-	case "processing_time":
-		sortBy = "processing_time"
-	default:
-		sortBy = "timestamp"
+	allowedSortColumns := map[string]string{
+		"timestamp":       "timestamp",
+		"confidence":      "confidence",
+		"processing_time": "processing_time_ms",
+	}
+	sortBy := allowedSortColumns["timestamp"] // default
+	if col, ok := allowedSortColumns[options.SortBy]; ok {
+		sortBy = col
 	}
 
-	sortOrder := strings.ToUpper(options.SortOrder)
-	if sortOrder != "ASC" && sortOrder != "DESC" {
-		sortOrder = "DESC"
+	sortOrder := "DESC"
+	if strings.ToUpper(options.SortOrder) == "ASC" {
+		sortOrder = "ASC"
 	}
 
-	query += fmt.Sprintf(" ORDER BY %s %s", sortBy, sortOrder)
+	// Safe ORDER BY clause
+	query += " ORDER BY " + sortBy + " " + sortOrder
 
 	// Apply pagination
 	if options.Limit > 0 {
 		query += " LIMIT ?"
 		args = append(args, options.Limit)
-		
+
 		if options.Offset > 0 {
 			query += " OFFSET ?"
 			args = append(args, options.Offset)
