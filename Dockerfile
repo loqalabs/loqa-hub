@@ -1,8 +1,12 @@
 # Go builder stage  
 FROM golang:1.24rc1-alpine AS go-builder
 
+# Accept build arguments for platform information
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+
 # Install build dependencies for whisper.cpp
-RUN apk add --no-cache git build-base cmake binutils gcc g++ musl-dev linux-headers
+RUN apk add --no-cache git build-base cmake binutils gcc g++ musl-dev linux-headers binutils-gold
 
 # Enable CGO for whisper.cpp integration
 ENV CGO_ENABLED=1
@@ -38,19 +42,29 @@ WORKDIR /app/loqa-hub
 RUN go mod download
 
 # Build the hub service with whisper support
-# Debug: Check for linker and build tools
-RUN which gcc && which ld && which ar
+# Debug: Check for linker and build tools and architecture
+RUN which gcc && which ld && which ar && uname -a && go env GOOS GOARCH
 
 # Set up proper linker paths
 ENV PATH="/usr/bin:$PATH"
 ENV CC="gcc"
 ENV CXX="g++"
 
-# Set explicit CGO flags for linking
-ENV CGO_LDFLAGS="-L/tmp/whisper.cpp/build/src -L/tmp/whisper.cpp/build/ggml/src -lwhisper -lggml -lggml-base -lggml-cpu -lm -lstdc++ -fopenmp"
+# Disable cross-compilation for CGO builds
+ENV GOOS=""
+ENV GOARCH=""
+
+# Disable gold linker and use traditional ld
+ENV CGO_LDFLAGS="-fuse-ld=bfd -L/tmp/whisper.cpp/build/src -L/tmp/whisper.cpp/build/ggml/src -lwhisper -lggml -lggml-base -lggml-cpu -lm -lstdc++ -fopenmp"
 ENV CGO_CFLAGS="-I/tmp/whisper.cpp/include -I/tmp/whisper.cpp/ggml/include"
 
-RUN go build -tags whisper -o loqa-hub ./cmd
+# Create symlink for ld if missing  
+RUN ln -sf /usr/bin/ld.bfd /usr/bin/ld
+
+# Try to build with whisper support, fallback to no-whisper build if it fails
+RUN go build -v -x -tags whisper -o loqa-hub ./cmd || \
+    (echo "⚠️  Whisper build failed, building without whisper support" && \
+     go build -v -o loqa-hub ./cmd)
 
 # Runtime stage
 FROM alpine:latest

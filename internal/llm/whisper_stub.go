@@ -40,6 +40,7 @@ func (wt *WhisperTranscriber) Transcribe(audioData []float32, sampleRate int) (s
 }
 
 // Close stub implementation
-func (wt *WhisperTranscriber) Close() {
+func (wt *WhisperTranscriber) Close() error {
 	// Nothing to clean up in stub
+	return nil
 }
