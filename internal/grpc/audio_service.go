@@ -19,13 +19,14 @@
 package grpc
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
 	"time"
 
 	"go.uber.org/zap"
-	pb "github.com/loqalabs/loqa-proto/go"
+	pb "github.com/loqalabs/loqa-proto/go/audio"
 	"github.com/loqalabs/loqa-hub/internal/events"
 	"github.com/loqalabs/loqa-hub/internal/llm"
 	"github.com/loqalabs/loqa-hub/internal/logging"
@@ -36,18 +37,32 @@ import (
 // AudioService implements the gRPC AudioService
 type AudioService struct {
 	pb.UnimplementedAudioServiceServer
-	transcriber    *llm.WhisperTranscriber
+	transcriber    llm.Transcriber
 	commandParser  *llm.CommandParser
 	natsService    *messaging.NATSService
 	eventsStore    *storage.VoiceEventsStore
 }
 
-// NewAudioService creates a new audio service
+// NewAudioService creates a new audio service with whisper.cpp (legacy)
 func NewAudioService(modelPath string, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
 	transcriber, err := llm.NewWhisperTranscriber(modelPath)
 	if err != nil {
 		return nil, err
 	}
+	return createAudioService(transcriber, eventsStore)
+}
+
+// NewAudioServiceWithGRPC creates a new audio service using gRPC whisper service
+func NewAudioServiceWithGRPC(whisperAddr string, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
+	transcriber, err := llm.NewWhisperGRPCClient(whisperAddr)
+	if err != nil {
+		return nil, err
+	}
+	return createAudioService(transcriber, eventsStore)
+}
+
+// createAudioService is a helper to create the service with any transcriber implementation
+func createAudioService(transcriber llm.Transcriber, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
 
 	// Initialize command parser with Ollama
 	ollamaURL := os.Getenv("OLLAMA_URL")
@@ -125,18 +140,92 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			// Convert audio bytes back to float32
 			audioData := bytesToFloat32Array(chunk.AudioData)
 			
+			// Validate converted audio data
+			if len(audioData) == 0 {
+				logging.LogWarn("Empty audio data after conversion",
+					zap.String("puck_id", chunk.PuckId),
+					zap.Int("original_bytes", len(chunk.AudioData)),
+				)
+				voiceEvent.SetResponse("Invalid audio data received")
+				as.storeVoiceEvent(voiceEvent)
+				
+				// Send error response back to puck
+				response := &pb.AudioResponse{
+					RequestId:     chunk.PuckId,
+					Transcription: "",
+					Command:       "error",
+					ResponseText:  "Invalid audio data received. Please try again.",
+					Success:       false,
+				}
+				if err := stream.Send(response); err != nil {
+					logging.LogError(err, "Error sending empty-audio response to puck")
+					return err
+				}
+				continue
+			}
+			
 			// Set audio metadata
 			voiceEvent.SetAudioMetadata(audioData, int(chunk.SampleRate), chunk.IsWakeWord)
 			
-			// Transcribe audio using Whisper
-			transcription, err := as.transcriber.Transcribe(audioData, int(chunk.SampleRate))
+			// Transcribe audio using Whisper (with panic recovery and detailed logging)
+			var transcription string
+			var err error
+			
+			// Log audio data characteristics before Whisper call
+			logging.LogAudioProcessing(chunk.PuckId, "whisper_pre_call",
+				zap.Int("samples_count", len(audioData)),
+				zap.Int("sample_rate", int(chunk.SampleRate)),
+				zap.Float32("audio_min", findMin(audioData)),
+				zap.Float32("audio_max", findMax(audioData)),
+				zap.String("event_uuid", voiceEvent.UUID),
+			)
+			
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						err = fmt.Errorf("whisper transcription panic: %v", r)
+						logging.LogError(err, "Whisper panic recovered",
+							zap.String("puck_id", chunk.PuckId),
+							zap.String("event_uuid", voiceEvent.UUID),
+							zap.Int("samples_count", len(audioData)),
+						)
+					}
+				}()
+				
+				logging.LogAudioProcessing(chunk.PuckId, "whisper_calling",
+					zap.String("event_uuid", voiceEvent.UUID),
+				)
+				
+				transcription, err = as.transcriber.Transcribe(audioData, int(chunk.SampleRate))
+				
+				logging.LogAudioProcessing(chunk.PuckId, "whisper_returned",
+					zap.String("event_uuid", voiceEvent.UUID),
+					zap.Bool("success", err == nil),
+					zap.Int("transcription_length", len(transcription)),
+				)
+			}()
+			
 			if err != nil {
 				logging.LogError(err, "Error transcribing audio", 
 					zap.String("puck_id", chunk.PuckId),
 					zap.String("event_uuid", voiceEvent.UUID),
 				)
 				voiceEvent.SetError(err)
+				voiceEvent.SetResponse("Sorry, I couldn't process your audio. Please try again.")
 				as.storeVoiceEvent(voiceEvent)
+				
+				// Send error response back to puck
+				response := &pb.AudioResponse{
+					RequestId:     chunk.PuckId,
+					Transcription: "",
+					Command:       "error",
+					ResponseText:  "Sorry, I couldn't process your audio. Please try again.",
+					Success:       false,
+				}
+				if err := stream.Send(response); err != nil {
+					logging.LogError(err, "Error sending error response to puck")
+					return err
+				}
 				continue
 			}
 			
@@ -156,6 +245,19 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 				)
 				voiceEvent.SetResponse("No speech detected")
 				as.storeVoiceEvent(voiceEvent)
+				
+				// Send response back to puck for no speech detected
+				response := &pb.AudioResponse{
+					RequestId:     chunk.PuckId,
+					Transcription: "",
+					Command:       "no_speech",
+					ResponseText:  "I didn't hear anything. Please try again.",
+					Success:       true,
+				}
+				if err := stream.Send(response); err != nil {
+					logging.LogError(err, "Error sending no-speech response to puck")
+					return err
+				}
 				continue
 			}
 
@@ -262,11 +364,53 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 	}
 }
 
+// Helper functions for audio analysis
+func findMin(data []float32) float32 {
+	if len(data) == 0 {
+		return 0
+	}
+	min := data[0]
+	for _, v := range data {
+		if v < min {
+			min = v
+		}
+	}
+	return min
+}
+
+func findMax(data []float32) float32 {
+	if len(data) == 0 {
+		return 0
+	}
+	max := data[0]
+	for _, v := range data {
+		if v > max {
+			max = v
+		}
+	}
+	return max
+}
+
 // Helper function to convert bytes back to float32 array
 func bytesToFloat32Array(data []byte) []float32 {
+	// Validate input data
+	if len(data) == 0 {
+		return []float32{}
+	}
+	
+	// Ensure even number of bytes for 16-bit PCM
+	dataLen := len(data)
+	if dataLen%2 != 0 {
+		dataLen -= 1 // Drop the last incomplete sample
+	}
+	
 	// Convert 16-bit PCM bytes to float32 samples
-	samples := make([]float32, len(data)/2)
+	samples := make([]float32, dataLen/2)
 	for i := 0; i < len(samples); i++ {
+		// Add bounds checking
+		if i*2+1 >= len(data) {
+			break
+		}
 		// Reconstruct int16 from bytes (little-endian)
 		val := int16(data[i*2]) | int16(data[i*2+1])<<8
 		// Convert to float32 [-1,1]
