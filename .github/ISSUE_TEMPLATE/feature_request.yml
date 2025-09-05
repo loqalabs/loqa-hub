@@ -39,7 +39,7 @@ body:
       description: Which component would this feature affect?
       options:
         - gRPC Audio Service
-        - Whisper STT Integration
+        - STT Integration
         - LLM Command Parser
         - NATS Messaging
         - HTTP API

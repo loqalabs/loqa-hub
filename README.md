@@ -13,7 +13,7 @@ Central orchestrator for the Loqa local-first voice assistant platform.
 
 Loqa Hub is the core service that handles:
 - gRPC API for audio input from pucks
-- Speech-to-text processing via Whisper.cpp
+- Speech-to-text processing via OpenAI-compatible STT service
 - LLM-based intent parsing and command extraction
 - NATS integration for publishing commands to other services
 - **NEW:** Complete voice event tracking and observability
@@ -21,7 +21,7 @@ Loqa Hub is the core service that handles:
 ## Features
 
 - 🎤 **Audio Processing**: Receives audio streams from puck devices via gRPC
-- 📝 **Speech Recognition**: Local speech-to-text using Whisper.cpp
+- 📝 **Speech Recognition**: Local speech-to-text using OpenAI-compatible STT service
 - 🤖 **Intent Parsing**: Natural language understanding via Ollama LLM
 - 📡 **Event Publishing**: Publishes parsed commands to NATS message bus
 - 🔒 **Privacy-First**: All processing happens locally, no cloud dependencies
