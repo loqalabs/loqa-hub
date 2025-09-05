@@ -23,7 +23,6 @@ jobs:
     uses: loqalabs/.github/.github/workflows/go-test.yml@main
     with:
       go-version: '1.23.0'
-      proto-repo: 'loqalabs/loqa-proto'
       coverage-flag: 'loqa-hub'
       coverage-name: 'loqa-hub'
 

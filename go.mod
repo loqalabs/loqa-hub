@@ -3,7 +3,7 @@ module github.com/loqalabs/loqa-hub
 go 1.23.0
 
 require (
-	github.com/loqalabs/loqa-proto/go v0.0.0-20250903195806-c0224cdd4d13
+	github.com/loqalabs/loqa-proto/go v0.0.16
 	github.com/nats-io/nats.go v1.31.0
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.65.0
