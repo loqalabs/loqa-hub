@@ -25,9 +25,34 @@ import (
 	"os"
 	"path/filepath"
 	"plugin"
+	"strings"
 
 	"github.com/loqalabs/loqa-hub/internal/logging"
 )
+
+// SkillsRootDir defines the root directory for all skills
+const SkillsRootDir = "./skills"
+
+// validateSkillPath ensures the skill path is within the allowed skills directory
+func validateSkillPath(skillPath string) error {
+	// Get absolute path for both the skill path and root directory
+	absSkillPath, err := filepath.Abs(skillPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve skill path: %w", err)
+	}
+	
+	absRootDir, err := filepath.Abs(SkillsRootDir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve skills root directory: %w", err)
+	}
+	
+	// Ensure the skill path is within the skills root directory
+	if !strings.HasPrefix(absSkillPath, absRootDir+string(filepath.Separator)) && absSkillPath != absRootDir {
+		return fmt.Errorf("skill path %q is outside the allowed skills directory %q", skillPath, SkillsRootDir)
+	}
+	
+	return nil
+}
 
 // DefaultSkillLoader is the default implementation of SkillLoader
 type DefaultSkillLoader struct {
@@ -51,6 +76,11 @@ func (l *DefaultSkillLoader) SupportedModes() []SandboxMode {
 
 // LoadSkill loads a skill from the specified path
 func (l *DefaultSkillLoader) LoadSkill(ctx context.Context, skillPath string) (SkillPlugin, error) {
+	// Validate skill path to prevent directory traversal attacks
+	if err := validateSkillPath(skillPath); err != nil {
+		return nil, fmt.Errorf("invalid skill path: %w", err)
+	}
+	
 	// Load manifest
 	manifestPath := filepath.Join(skillPath, "skill.json")
 	manifestData, err := os.ReadFile(manifestPath)
