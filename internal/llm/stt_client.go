@@ -27,13 +27,7 @@ type STTClient struct {
 	httpClient *http.Client
 }
 
-// OpenAI-compatible request/response structs
-type transcriptionRequest struct {
-	Model       string  `json:"model,omitempty"`
-	Language    string  `json:"language,omitempty"`
-	Temperature float32 `json:"temperature,omitempty"`
-}
-
+// OpenAI-compatible response struct
 type transcriptionResponse struct {
 	Text string `json:"text"`
 }
