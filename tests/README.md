@@ -12,7 +12,7 @@ Tests individual components and their interactions:
 
 ### End-to-End Tests (`e2e/`)
 Tests complete system workflows:
-- Full voice pipeline from puck to hub
+- Full voice pipeline from relay to hub
 - Docker Compose service orchestration
 - Real-world usage scenarios
 

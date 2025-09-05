@@ -43,8 +43,8 @@ echo
 # Instructions for manual testing
 echo "📋 Manual Test Instructions:"
 echo "1. Open a new terminal window"
-echo "2. Navigate to: $(pwd)/puck/test-go/"
-echo "3. Run: ./test-puck --hub localhost:50051"
+echo "2. Navigate to: $(pwd)/relay/test-go/"
+echo "3. Run: ./test-relay --hub localhost:50051"
 echo "4. Wait for 'Wake Word: \"Hey Loqa\" (enabled)' message"
 echo "5. Say: 'Hey Loqa, turn on the lights'"
 echo "6. Observe wake word detection logs"

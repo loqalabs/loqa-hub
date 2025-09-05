@@ -42,14 +42,14 @@ go build -o ../bin/loqa-hub ./cmd
 echo "🔧 Building device service..."
 go build -o ../bin/device-service ./cmd/device-service
 
-# Build test puck (if needed for testing)
-echo "🎤 Building test puck..."
-cd ../puck/test-go
+# Build test relay (if needed for testing)
+echo "🎤 Building test relay..."
+cd ../relay/test-go
 go mod tidy
-go build -o ../../bin/test-puck ./cmd
+go build -o ../../bin/test-relay ./cmd
 
 echo "✅ Build complete!"
 echo ""
 echo "🐳 Run services in Docker: docker-compose up -d"
 echo "🏃 Or run hub locally: ./bin/loqa-hub"
-echo "🎤 Run test puck: ./bin/test-puck"
+echo "🎤 Run test relay: ./bin/test-relay"

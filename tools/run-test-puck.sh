@@ -17,8 +17,8 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 
-# Loqa Test Puck Runner
-# Builds and runs the Go test puck for voice interaction testing
+# Loqa Test Relay Runner
+# Builds and runs the Go test relay for voice interaction testing
 
 set -e
 
@@ -29,7 +29,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🚀 Loqa Test Puck Builder & Runner${NC}"
+echo -e "${BLUE}🚀 Loqa Test Relay Builder & Runner${NC}"
 echo "======================================="
 
 # Check if we're in the right directory
@@ -40,7 +40,7 @@ fi
 
 # Default values
 HUB_ADDRESS="localhost:50051"
-PUCK_ID="test-puck-001"
+RELAY_ID="test-relay-001"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -50,7 +50,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --id)
-            PUCK_ID="$2"
+            RELAY_ID="$2"
             shift 2
             ;;
         -h|--help)
@@ -58,12 +58,12 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --hub ADDRESS    Hub gRPC address (default: localhost:50051)"
-            echo "  --id ID          Puck identifier (default: test-puck-001)"
+            echo "  --id ID          Relay identifier (default: test-relay-001)"
             echo "  -h, --help       Show this help message"
             echo ""
             echo "Examples:"
             echo "  $0                                    # Use defaults"
-            echo "  $0 --hub localhost:50051 --id puck-1 # Custom settings"
+            echo "  $0 --hub localhost:50051 --id relay-1 # Custom settings"
             exit 0
             ;;
         *)
@@ -76,7 +76,7 @@ done
 
 echo -e "${YELLOW}📋 Configuration:${NC}"
 echo "  Hub Address: $HUB_ADDRESS"
-echo "  Puck ID: $PUCK_ID"
+echo "  Relay ID: $RELAY_ID"
 echo ""
 
 # Check if PortAudio is available
@@ -108,26 +108,26 @@ fi
 
 echo -e "${GREEN}✅ PortAudio is available${NC}"
 
-# Build the test puck
-echo -e "${BLUE}🔨 Building test puck...${NC}"
-cd puck/test-go
+# Build the test relay
+echo -e "${BLUE}🔨 Building test relay...${NC}"
+cd relay/test-go
 
 # Clean and build
 echo "Cleaning previous builds..."
-rm -f test-puck
+rm -f test-relay
 
 echo "Downloading Go dependencies..."
 go mod tidy
 
-echo "Building test puck binary..."
-go build -o test-puck ./cmd
+echo "Building test relay binary..."
+go build -o test-relay ./cmd
 
-if [ ! -f "test-puck" ]; then
+if [ ! -f "test-relay" ]; then
     echo -e "${RED}❌ Build failed${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}✅ Test puck built successfully${NC}"
+echo -e "${GREEN}✅ Test relay built successfully${NC}"
 
 # Check if hub is running
 echo -e "${BLUE}🔍 Checking hub connectivity...${NC}"
@@ -136,17 +136,17 @@ if ! nc -z ${HUB_ADDRESS%:*} ${HUB_ADDRESS#*:} 2>/dev/null; then
     echo "Make sure the hub service is running:"
     echo "  cd deployments && docker-compose up -d"
     echo ""
-    echo "Starting puck anyway (will retry connection)..."
+    echo "Starting relay anyway (will retry connection)..."
 fi
 
-# Run the test puck
-echo -e "${BLUE}🎤 Starting test puck...${NC}"
+# Run the test relay
+echo -e "${BLUE}🎤 Starting test relay...${NC}"
 echo ""
 echo "==========================================="
-echo -e "${GREEN}🎙️  Test puck is ready!${NC}"
+echo -e "${GREEN}🎙️  Test relay is ready!${NC}"
 echo "Say \"Hey Loqa\" followed by your command!"
 echo "Press Ctrl+C to stop"
 echo "==========================================="
 echo ""
 
-./test-puck --hub "$HUB_ADDRESS" --id "$PUCK_ID"
+./test-relay --hub "$HUB_ADDRESS" --id "$RELAY_ID"
