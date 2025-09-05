@@ -92,3 +92,4 @@ See the main [Loqa documentation](https://github.com/loqalabs/loqa) for setup an
 ## License
 
 Licensed under the GNU Affero General Public License v3.0. See [LICENSE](LICENSE) for details. 
+ 
