@@ -3,7 +3,6 @@ module github.com/loqalabs/loqa-hub
 go 1.24
 
 require (
-	github.com/ggerganov/whisper.cpp/bindings/go v0.0.0-20250818173045-fc45bb86251f
 	github.com/loqalabs/loqa-proto/go v0.0.0-00010101000000-000000000000
 	github.com/nats-io/nats.go v1.45.0
 	go.uber.org/zap v1.27.0
@@ -22,6 +21,7 @@ require (
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/stretchr/testify v1.9.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
