@@ -19,315 +19,45 @@ permissions:
 
 jobs:
   test:
-    name: Test
-    runs-on: ubuntu-latest
-    
-    services:
-      nats:
-        image: nats:2.10-alpine
-        ports:
-          - 4222:4222
-          - 8222:8222
-        options: >-
-          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8222/healthz || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-    - name: Checkout loqa-hub
-      uses: actions/checkout@v5
-      with:
-        path: loqa-hub
-
-    - name: Checkout loqa-proto
-      uses: actions/checkout@v5
-      with:
-        repository: loqalabs/loqa-proto
-        path: loqa-proto
-
-    - name: Set up Go
-      uses: actions/setup-go@v6
-      with:
-        go-version: '1.23.0'
-        cache-dependency-path: 'loqa-hub/go.sum'
-
-    - name: Cache Go build
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
-
-    - name: Verify Go version
-      run: go version
-
-    - name: Check Go version consistency
-      run: |
-        ROOT=$(grep '^go ' loqa-hub/go.mod | cut -d' ' -f2)
-        PROTO=$(grep '^go ' loqa-proto/go/go.mod | cut -d' ' -f2)
-        if [ "$ROOT" != "$PROTO" ]; then
-          echo "❌ Go version mismatch: loqa-hub=$ROOT vs loqa-proto=$PROTO"
-          exit 1
-        fi
-        echo "✅ Go version check passed: $ROOT"
-
-    - name: Download dependencies
-      run: go mod download
-      working-directory: loqa-hub
-
-    - name: Run tests
-      run: go test -v -race -coverprofile=coverage.out ./...
-      working-directory: loqa-hub
-      env:
-        NATS_URL: nats://localhost:4222
-
-    - name: Upload coverage reports
-      uses: codecov/codecov-action@v5
-      with:
-        file: ./loqa-hub/coverage.out
-        flags: hub
-        name: loqa-hub
-
-    - name: Run go vet
-      run: go vet ./...
-      working-directory: loqa-hub
-
-    - name: Run staticcheck
-      run: |
-        go install honnef.co/go/tools/cmd/staticcheck@v0.5.1
-        staticcheck ./...
-      working-directory: loqa-hub
+    name: Test & Lint with NATS
+    uses: loqalabs/.github/.github/workflows/go/test.yml@main
+    with:
+      go-version: '1.23.0'
+      proto-repo: 'loqalabs/loqa-proto'
+      coverage-flag: 'loqa-hub'
+      coverage-name: 'loqa-hub'
 
   mod-check:
-    name: Verify Go Module and Build
-    runs-on: ubuntu-latest
+    name: Validate Go Modules
     needs: test
-
-    steps:
-      - name: Checkout loqa-hub
-        uses: actions/checkout@v5
-        with:
-          path: loqa-hub
-
-      - name: Checkout loqa-proto
-        uses: actions/checkout@v5
-        with:
-          repository: loqalabs/loqa-proto
-          path: loqa-proto
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.23.0'
-          cache-dependency-path: 'loqa-hub/go.sum'
-
-      - name: Cache Go build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      - name: Check Go module is tidy
-        run: |
-          go mod tidy
-          git diff --exit-code || (echo "::error::go.mod/go.sum are not tidy" && exit 1)
-        working-directory: loqa-hub
-
-      - name: Verify build
-        run: go build ./...
-        working-directory: loqa-hub
-        
+    uses: loqalabs/.github/.github/workflows/go/mod-check.yml@main
+    with:
+      go-version: '1.23.0'
 
   build:
-    name: Build
-    runs-on: ubuntu-latest
-    needs: test
-    
-    steps:
-    - name: Checkout loqa-hub
-      uses: actions/checkout@v5
-      with:
-        path: loqa-hub
-
-    - name: Checkout loqa-proto
-      uses: actions/checkout@v5
-      with:
-        repository: loqalabs/loqa-proto
-        path: loqa-proto
-
-    - name: Set up Go
-      uses: actions/setup-go@v6
-      with:
-        go-version: '1.23.0'
-        cache-dependency-path: 'loqa-hub/go.sum'
-
-    - name: Cache Go build
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
-
-    - name: Verify Go version
-      run: go version
-
-    - name: Build loqa-hub binary
-      run: |
-        go build -v -ldflags="-w -s" -o bin/loqa-hub ./cmd
-      working-directory: loqa-hub
-
-    - name: Upload binary artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: loqa-hub-binary
-        path: loqa-hub/bin/loqa-hub
+    name: Build Go Binary
+    needs: mod-check
+    uses: loqalabs/.github/.github/workflows/go/build.yml@main
+    with:
+      go-version: '1.23.0'
+      binary-name: 'loqa-hub'
 
   security:
     name: Security Analysis
-    runs-on: ubuntu-latest
-    
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
-    
-    steps:
-    - name: Checkout loqa-hub
-      uses: actions/checkout@v5
-      with:
-        path: loqa-hub
-
-    - name: Checkout loqa-proto
-      uses: actions/checkout@v5
-      with:
-        repository: loqalabs/loqa-proto
-        path: loqa-proto
-
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
-      with:
-        languages: go
-
-    - name: Set up Go
-      uses: actions/setup-go@v6
-      with:
-        go-version: '1.23.0'
-
-    - name: Build application for CodeQL
-      run: go build -v ./...
-      working-directory: loqa-hub
-
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
-
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: 'fs'
-        scan-ref: './loqa-hub'
-        format: 'sarif'
-        output: 'trivy-results.sarif'
-
-    - name: Upload Trivy scan results
-      if: always() && hashFiles('trivy-results.sarif') != ''
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: 'trivy-results.sarif'
+    needs: build
+    uses: loqalabs/.github/.github/workflows/security-scan.yml@main
+    with:
+      language: 'go'
+      go-version: '1.23.0'
 
   docker:
-    name: Build and Push Docker Image with Security
-    runs-on: ubuntu-latest
+    name: Docker Build and Security
     needs: [test, security]
     if: github.event_name != 'pull_request'
-    
-    permissions:
-      contents: read
-      packages: write
-      security-events: write
-
-    steps:
-    - name: Checkout loqa-hub
-      uses: actions/checkout@v5
-      with:
-        path: loqa-hub
-
-    - name: Checkout loqa-proto
-      uses: actions/checkout@v5
-      with:
-        repository: loqalabs/loqa-proto
-        path: loqa-proto
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_TOKEN }}
-
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
-
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v6
-      id: build
-      with:
-        context: ./loqa-hub
-        file: ./loqa-hub/Dockerfile
-        platforms: linux/amd64,linux/arm64
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        sbom: true
-        provenance: true
-
-    - name: Generate SBOM
-      uses: anchore/sbom-action@v0
-      with:
-        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-        format: spdx-json
-        output-file: sbom.spdx.json
-
-    - name: Upload SBOM
-      uses: actions/upload-artifact@v4
-      with:
-        name: sbom-loqa-hub
-        path: sbom.spdx.json
-
-    - name: Scan container image
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-        format: 'sarif'
-        output: 'container-scan-results.sarif'
-
-    - name: Upload container scan results
-      if: always() && hashFiles('container-scan-results.sarif') != ''
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: 'container-scan-results.sarif'
+    uses: loqalabs/.github/.github/workflows/docker-build-and-push.yml@main
+    with:
+      registry: docker.io
+      image-name: loqalabs/loqa-hub
+    secrets:
+      docker-username: ${{ secrets.DOCKER_USERNAME }}
+      docker-token: ${{ secrets.DOCKER_TOKEN }}
