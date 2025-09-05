@@ -103,7 +103,7 @@ jobs:
     - name: Verify Go version
       run: go version
 
-    - name: Build binary (without whisper for CI)
+    - name: Build binary
       run: |
         go build -v -ldflags="-w -s" -o bin/loqa-hub ./cmd
       working-directory: loqa-hub
