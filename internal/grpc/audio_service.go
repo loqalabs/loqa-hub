@@ -43,18 +43,9 @@ type AudioService struct {
 	eventsStore    *storage.VoiceEventsStore
 }
 
-// NewAudioService creates a new audio service with whisper.cpp (legacy)
-func NewAudioService(modelPath string, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
-	transcriber, err := llm.NewWhisperTranscriber(modelPath)
-	if err != nil {
-		return nil, err
-	}
-	return createAudioService(transcriber, eventsStore)
-}
-
-// NewAudioServiceWithGRPC creates a new audio service using gRPC whisper service
-func NewAudioServiceWithGRPC(whisperAddr string, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
-	transcriber, err := llm.NewWhisperGRPCClient(whisperAddr)
+// NewAudioServiceWithSTT creates a new audio service using OpenAI-compatible STT service
+func NewAudioServiceWithSTT(sttURL string, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
+	transcriber, err := llm.NewSTTClient(sttURL)
 	if err != nil {
 		return nil, err
 	}

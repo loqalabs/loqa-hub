@@ -27,10 +27,10 @@ import (
 
 // Config holds all configuration for the Loqa hub
 type Config struct {
-	Server   ServerConfig
-	Whisper  WhisperConfig
-	Logging  LoggingConfig
-	NATS     NATSConfig
+	Server  ServerConfig
+	STT     STTConfig
+	Logging LoggingConfig
+	NATS    NATSConfig
 }
 
 // ServerConfig holds server-related configuration
@@ -42,12 +42,12 @@ type ServerConfig struct {
 	WriteTimeout time.Duration
 }
 
-// WhisperConfig holds Whisper-related configuration
-type WhisperConfig struct {
-	ModelPath    string
-	Language     string
-	Temperature  float32
-	MaxTokens    int
+// STTConfig holds Speech-to-Text service configuration
+type STTConfig struct {
+	URL         string  // REST API URL for OpenAI-compatible STT service
+	Language    string
+	Temperature float32
+	MaxTokens   int
 }
 
 // LoggingConfig holds logging configuration
@@ -74,11 +74,11 @@ func Load() (*Config, error) {
 			ReadTimeout:  getEnvDuration("LOQA_READ_TIMEOUT", 30*time.Second),
 			WriteTimeout: getEnvDuration("LOQA_WRITE_TIMEOUT", 30*time.Second),
 		},
-		Whisper: WhisperConfig{
-			ModelPath:   getEnvString("WHISPER_MODEL_PATH", "/models/ggml-base.en.bin"),
-			Language:    getEnvString("WHISPER_LANGUAGE", "en"),
-			Temperature: getEnvFloat32("WHISPER_TEMPERATURE", 0.0),
-			MaxTokens:   getEnvInt("WHISPER_MAX_TOKENS", 224),
+		STT: STTConfig{
+			URL:         getEnvString("STT_URL", "http://stt:8000"),
+			Language:    getEnvString("STT_LANGUAGE", "en"),
+			Temperature: getEnvFloat32("STT_TEMPERATURE", 0.0),
+			MaxTokens:   getEnvInt("STT_MAX_TOKENS", 224),
 		},
 		Logging: LoggingConfig{
 			Level:  getEnvString("LOG_LEVEL", "info"),
@@ -109,8 +109,8 @@ func (c *Config) validate() error {
 		return fmt.Errorf("invalid gRPC port: %d", c.Server.GRPCPort)
 	}
 
-	if c.Whisper.ModelPath == "" {
-		return fmt.Errorf("whisper model path cannot be empty")
+	if c.STT.URL == "" {
+		return fmt.Errorf("STT URL must be provided")
 	}
 
 	return nil
