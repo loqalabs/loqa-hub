@@ -21,7 +21,7 @@ WORKDIR /app/loqa-hub
 # Download go modules
 RUN go mod download
 
-# Build the hub service (REST-only, no whisper.cpp)
+# Build the hub service
 RUN go build -v -o loqa-hub ./cmd
 
 # Runtime stage

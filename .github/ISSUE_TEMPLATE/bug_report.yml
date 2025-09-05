@@ -27,7 +27,7 @@ body:
       description: Which component is affected?
       options:
         - gRPC Audio Service
-        - Whisper STT Integration
+        - STT Integration
         - LLM Command Parser
         - NATS Messaging
         - HTTP API

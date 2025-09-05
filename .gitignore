@@ -48,8 +48,8 @@ Thumbs.db
 *.log
 logs/
 
-# Whisper models and data
-whisper-models/
+# STT models and data
+stt-models/
 models/
 *.bin
 *.gguf

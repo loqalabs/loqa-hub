@@ -158,12 +158,12 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			// Set audio metadata
 			voiceEvent.SetAudioMetadata(audioData, int(chunk.SampleRate), chunk.IsWakeWord)
 			
-			// Transcribe audio using Whisper (with panic recovery and detailed logging)
+			// Transcribe audio using STT service (with panic recovery and detailed logging)
 			var transcription string
 			var err error
 			
-			// Log audio data characteristics before Whisper call
-			logging.LogAudioProcessing(chunk.PuckId, "whisper_pre_call",
+			// Log audio data characteristics before STT call
+			logging.LogAudioProcessing(chunk.PuckId, "stt_pre_call",
 				zap.Int("samples_count", len(audioData)),
 				zap.Int("sample_rate", int(chunk.SampleRate)),
 				zap.Float32("audio_min", findMin(audioData)),
@@ -174,8 +174,8 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						err = fmt.Errorf("whisper transcription panic: %v", r)
-						logging.LogError(err, "Whisper panic recovered",
+						err = fmt.Errorf("STT transcription panic: %v", r)
+						logging.LogError(err, "STT panic recovered",
 							zap.String("puck_id", chunk.PuckId),
 							zap.String("event_uuid", voiceEvent.UUID),
 							zap.Int("samples_count", len(audioData)),
@@ -183,13 +183,13 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 					}
 				}()
 				
-				logging.LogAudioProcessing(chunk.PuckId, "whisper_calling",
+				logging.LogAudioProcessing(chunk.PuckId, "stt_calling",
 					zap.String("event_uuid", voiceEvent.UUID),
 				)
 				
 				transcription, err = as.transcriber.Transcribe(audioData, int(chunk.SampleRate))
 				
-				logging.LogAudioProcessing(chunk.PuckId, "whisper_returned",
+				logging.LogAudioProcessing(chunk.PuckId, "stt_returned",
 					zap.String("event_uuid", voiceEvent.UUID),
 					zap.Bool("success", err == nil),
 					zap.Int("transcription_length", len(transcription)),

@@ -118,7 +118,7 @@ func (s *STTClient) Transcribe(audioData []float32, sampleRate int) (string, err
 	}
 
 	// Add optional parameters
-	writer.WriteField("model", "tiny") // Use the model loaded in faster-whisper-server
+	writer.WriteField("model", "tiny") // Use the model loaded in STT service
 	writer.WriteField("language", "")  // Auto-detect
 	writer.WriteField("temperature", "0.0")
 	writer.WriteField("response_format", "json")
