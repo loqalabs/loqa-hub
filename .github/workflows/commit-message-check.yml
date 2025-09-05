@@ -11,7 +11,7 @@ permissions:
 jobs:
   commit-check:
     name: Check Commit Messages
-    uses: loqalabs/.github/.github/workflows/quality/commit-message-check.yml@main
+    uses: loqalabs/.github/.github/workflows/commit-message-check.yml@main
     with:
       ai-attribution-check: true
       allow-merge-commits: true

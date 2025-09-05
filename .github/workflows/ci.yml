@@ -20,7 +20,7 @@ permissions:
 jobs:
   test:
     name: Test & Lint with NATS
-    uses: loqalabs/.github/.github/workflows/go/test.yml@main
+    uses: loqalabs/.github/.github/workflows/go-test.yml@main
     with:
       go-version: '1.23.0'
       proto-repo: 'loqalabs/loqa-proto'
@@ -30,14 +30,14 @@ jobs:
   mod-check:
     name: Validate Go Modules
     needs: test
-    uses: loqalabs/.github/.github/workflows/go/mod-check.yml@main
+    uses: loqalabs/.github/.github/workflows/go-mod-check.yml@main
     with:
       go-version: '1.23.0'
 
   build:
     name: Build Go Binary
     needs: mod-check
-    uses: loqalabs/.github/.github/workflows/go/build.yml@main
+    uses: loqalabs/.github/.github/workflows/go-build.yml@main
     with:
       go-version: '1.23.0'
       binary-name: 'loqa-hub'
