@@ -1,5 +1,5 @@
 # Go builder stage  
-FROM golang:1.24rc1-alpine AS go-builder
+FROM golang:1.23-alpine AS go-builder
 
 # Accept build arguments for platform information
 ARG TARGETPLATFORM
