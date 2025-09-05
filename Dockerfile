@@ -5,8 +5,8 @@ FROM golang:1.23-alpine AS go-builder
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 
-# Install basic build dependencies
-RUN apk add --no-cache git build-base
+# Install basic dependencies for Go module download
+RUN apk add --no-cache git ca-certificates
 
 # Set working directory
 WORKDIR /app
@@ -21,8 +21,9 @@ WORKDIR /app/loqa-hub
 # Download go modules
 RUN go mod download
 
-# Build the hub service
-RUN go build -v -o loqa-hub ./cmd
+# Build the hub service as static binary
+ENV CGO_ENABLED=0
+RUN go build -v -ldflags="-w -s" -o loqa-hub ./cmd
 
 # Runtime stage
 FROM alpine:latest
