@@ -32,15 +32,13 @@ import (
 )
 
 type Config struct {
-	Port         string
-	GRPCPort     string
-	ModelPath    string  // For whisper.cpp mode
-	WhisperAddr  string  // For gRPC mode
-	UseGRPCWhisper bool  // Toggle between modes
-	ASRURL       string
-	IntentURL    string
-	TTSURL       string
-	DBPath       string
+	Port      string
+	GRPCPort  string
+	STTURL    string  // REST API URL for OpenAI-compatible STT service
+	ASRURL    string
+	IntentURL string
+	TTSURL    string
+	DBPath    string
 }
 
 type Server struct {
@@ -76,13 +74,8 @@ func New(cfg Config) *Server {
 	
 	var audioService *grpcservice.AudioService
 	
-	if cfg.UseGRPCWhisper {
-		log.Printf("🎙️  Using gRPC Whisper service at: %s", cfg.WhisperAddr)
-		audioService, err = grpcservice.NewAudioServiceWithGRPC(cfg.WhisperAddr, eventsStore)
-	} else {
-		log.Printf("🎙️  Using whisper.cpp with model: %s", cfg.ModelPath)
-		audioService, err = grpcservice.NewAudioService(cfg.ModelPath, eventsStore)
-	}
+	log.Printf("🎙️  Using STT service at: %s", cfg.STTURL)
+	audioService, err = grpcservice.NewAudioServiceWithSTT(cfg.STTURL, eventsStore)
 	
 	if err != nil {
 		log.Fatalf("Failed to create audio service: %v", err)

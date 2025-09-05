@@ -35,24 +35,20 @@ func main() {
 
 	port := getEnv("LOQA_HUB_PORT", "3000")
 	grpcPort := getEnv("LOQA_GRPC_PORT", "50051")
-	modelPath := getEnv("MODEL_PATH", "/tmp/whisper.cpp/models/ggml-tiny.bin")
-	whisperAddr := getEnv("WHISPER_GRPC_ADDR", "whisper:50052")
-	useGRPCWhisper := getEnv("USE_GRPC_WHISPER", "true") == "true" // Default to gRPC
+	sttURL := getEnv("STT_URL", "http://stt:8000")
 	asrURL := getEnv("ASR_HOST", "http://localhost:5001")
 	intentURL := getEnv("INTENT_HOST", "http://localhost:5003")
 	ttsURL := getEnv("TTS_HOST", "http://localhost:5002")
 	dbPath := getEnv("DB_PATH", "./data/loqa-hub.db")
 
 	cfg := server.Config{
-		Port:           port,
-		GRPCPort:       grpcPort,
-		ModelPath:      modelPath,
-		WhisperAddr:    whisperAddr,
-		UseGRPCWhisper: useGRPCWhisper,
-		ASRURL:         asrURL,
-		IntentURL:      intentURL,
-		TTSURL:         ttsURL,
-		DBPath:         dbPath,
+		Port:      port,
+		GRPCPort:  grpcPort,
+		STTURL:    sttURL,
+		ASRURL:    asrURL,
+		IntentURL: intentURL,
+		TTSURL:    ttsURL,
+		DBPath:    dbPath,
 	}
 
 	srv := server.New(cfg)
