@@ -22,7 +22,7 @@ Retrieves a paginated list of voice events with optional filtering.
 |-------------|---------|---------|------------------------------------------------|
 | `page`      | integer | 1       | Page number (1-based)                        |
 | `page_size` | integer | 20      | Number of events per page (max 100)          |
-| `puck_id`   | string  | -       | Filter by specific puck ID                    |
+| `relay_id`   | string  | -       | Filter by specific relay ID                    |
 | `intent`    | string  | -       | Filter by command intent                      |
 | `success`   | boolean | -       | Filter by success status (true/false)        |
 | `start_time`| string  | -       | Filter by start time (RFC3339 format)        |
@@ -33,7 +33,7 @@ Retrieves a paginated list of voice events with optional filtering.
 #### Example Request
 
 ```bash
-curl "http://localhost:3000/api/voice-events?page=1&page_size=10&puck_id=kitchen-puck&intent=turn_on"
+curl "http://localhost:3000/api/voice-events?page=1&page_size=10&relay_id=kitchen-relay&intent=turn_on"
 ```
 
 #### Example Response
@@ -43,8 +43,8 @@ curl "http://localhost:3000/api/voice-events?page=1&page_size=10&puck_id=kitchen
   "events": [
     {
       "uuid": "123e4567-e89b-12d3-a456-426614174000",
-      "request_id": "kitchen-puck-001",
-      "puck_id": "kitchen-puck",
+      "request_id": "kitchen-relay-001",
+      "relay_id": "kitchen-relay",
       "timestamp": "2025-01-15T10:30:45Z",
       "audio_hash": "sha256:abc123...",
       "audio_duration": 2.5,
@@ -93,8 +93,8 @@ curl "http://localhost:3000/api/voice-events/123e4567-e89b-12d3-a456-42661417400
 ```json
 {
   "uuid": "123e4567-e89b-12d3-a456-426614174000",
-  "request_id": "kitchen-puck-001",
-  "puck_id": "kitchen-puck",
+  "request_id": "kitchen-relay-001",
+  "relay_id": "kitchen-relay",
   "timestamp": "2025-01-15T10:30:45Z",
   "audio_hash": "sha256:abc123...",
   "audio_duration": 2.5,
@@ -124,7 +124,7 @@ Creates a new voice event. Useful for testing or external integrations.
 
 ```json
 {
-  "puck_id": "test-puck",
+  "relay_id": "test-relay",
   "request_id": "test-request-001",
   "transcription": "hello loqa",
   "intent": "greeting",
@@ -145,7 +145,7 @@ Creates a new voice event. Useful for testing or external integrations.
 curl -X POST "http://localhost:3000/api/voice-events" \
   -H "Content-Type: application/json" \
   -d '{
-    "puck_id": "test-puck",
+    "relay_id": "test-relay",
     "transcription": "hello loqa",
     "intent": "greeting",
     "confidence": 0.88,
@@ -158,8 +158,8 @@ curl -X POST "http://localhost:3000/api/voice-events" \
 ```json
 {
   "uuid": "456e7890-e12b-34d5-b678-789012345000",
-  "request_id": "test-puck",
-  "puck_id": "test-puck",
+  "request_id": "test-relay",
+  "relay_id": "test-relay",
   "timestamp": "2025-01-15T10:35:00Z",
   "audio_hash": "sha256:def456...",
   "audio_duration": 1.2,
@@ -185,8 +185,8 @@ curl -X POST "http://localhost:3000/api/voice-events" \
 | Field                | Type              | Description                                    |
 |---------------------|-------------------|------------------------------------------------|
 | `uuid`              | string            | Unique identifier for the event               |
-| `request_id`        | string            | Request identifier from the puck              |
-| `puck_id`           | string            | Identifier of the puck that sent the audio   |
+| `request_id`        | string            | Request identifier from the relay              |
+| `relay_id`           | string            | Identifier of the relay that sent the audio   |
 | `timestamp`         | string (RFC3339)  | When the event was created                    |
 | `audio_hash`        | string            | SHA-256 hash of the audio data               |
 | `audio_duration`    | number            | Duration of audio in seconds                  |
@@ -196,7 +196,7 @@ curl -X POST "http://localhost:3000/api/voice-events" \
 | `intent`            | string            | Parsed command intent                         |
 | `entities`          | object            | Extracted entities from the command           |
 | `confidence`        | number (0-1)      | Confidence score for intent classification    |
-| `response_text`     | string            | Response sent back to the puck                |
+| `response_text`     | string            | Response sent back to the relay                |
 | `processing_time_ms`| integer           | Total processing time in milliseconds         |
 | `success`           | boolean           | Whether the event was processed successfully  |
 | `error_message`     | string (nullable) | Error message if processing failed            |

@@ -36,13 +36,13 @@ type NATSService struct {
 
 // CommandEvent represents a voice command event
 type CommandEvent struct {
-	PuckID       string            `json:"puck_id"`
-	Transcription string           `json:"transcription"`
-	Intent       string            `json:"intent"`
-	Entities     map[string]string `json:"entities"`
-	Confidence   float64           `json:"confidence"`
-	Timestamp    int64             `json:"timestamp"`
-	RequestID    string            `json:"request_id"`
+	RelayID       string            `json:"relay_id"`
+	Transcription string            `json:"transcription"`
+	Intent        string            `json:"intent"`
+	Entities      map[string]string `json:"entities"`
+	Confidence    float64           `json:"confidence"`
+	Timestamp     int64             `json:"timestamp"`
+	RequestID     string            `json:"request_id"`
 }
 
 // DeviceCommandEvent represents a command to execute on devices
@@ -56,12 +56,12 @@ type DeviceCommandEvent struct {
 
 // DeviceResponseEvent represents a response from device execution
 type DeviceResponseEvent struct {
-	RequestID   string `json:"request_id"`
-	DeviceType  string `json:"device_type"`
-	DeviceID    string `json:"device_id,omitempty"`
-	Success     bool   `json:"success"`
-	Message     string `json:"message"`
-	Timestamp   int64  `json:"timestamp"`
+	RequestID  string `json:"request_id"`
+	DeviceType string `json:"device_type"`
+	DeviceID   string `json:"device_id,omitempty"`
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+	Timestamp  int64  `json:"timestamp"`
 }
 
 // NATS subjects for different event types
@@ -130,8 +130,8 @@ func (ns *NATSService) PublishVoiceCommand(event *CommandEvent) error {
 		return fmt.Errorf("failed to publish to %s: %w", subject, err)
 	}
 
-	log.Printf("📤 Published voice command to NATS - Intent: %s, PuckID: %s", 
-		event.Intent, event.PuckID)
+	log.Printf("📤 Published voice command to NATS - Intent: %s, RelayID: %s",
+		event.Intent, event.RelayID)
 	return nil
 }
 
@@ -152,7 +152,7 @@ func (ns *NATSService) PublishDeviceCommand(event *DeviceCommandEvent) error {
 		return fmt.Errorf("failed to publish to %s: %w", subject, err)
 	}
 
-	log.Printf("📤 Published device command to NATS - Device: %s, Action: %s", 
+	log.Printf("📤 Published device command to NATS - Device: %s, Action: %s",
 		event.DeviceType, event.Action)
 	return nil
 }
@@ -170,8 +170,8 @@ func (ns *NATSService) SubscribeToVoiceCommands(handler func(*CommandEvent)) (*n
 			return
 		}
 
-		log.Printf("📥 Received voice command from NATS - Intent: %s, PuckID: %s", 
-			event.Intent, event.PuckID)
+		log.Printf("📥 Received voice command from NATS - Intent: %s, RelayID: %s",
+			event.Intent, event.RelayID)
 		handler(&event)
 	})
 }
@@ -190,7 +190,7 @@ func (ns *NATSService) SubscribeToDeviceCommands(deviceType string, handler func
 			return
 		}
 
-		log.Printf("📥 Received device command from NATS - Device: %s, Action: %s", 
+		log.Printf("📥 Received device command from NATS - Device: %s, Action: %s",
 			event.DeviceType, event.Action)
 		handler(&event)
 	})
@@ -209,7 +209,7 @@ func (ns *NATSService) SubscribeToDeviceResponses(handler func(*DeviceResponseEv
 			return
 		}
 
-		log.Printf("📥 Received device response from NATS - Device: %s, Success: %t", 
+		log.Printf("📥 Received device response from NATS - Device: %s, Success: %t",
 			event.DeviceType, event.Success)
 		handler(&event)
 	})
@@ -230,7 +230,7 @@ func (ns *NATSService) PublishDeviceResponse(event *DeviceResponseEvent) error {
 		return fmt.Errorf("failed to publish to %s: %w", SubjectDeviceResponses, err)
 	}
 
-	log.Printf("📤 Published device response to NATS - Device: %s, Success: %t", 
+	log.Printf("📤 Published device response to NATS - Device: %s, Success: %t",
 		event.DeviceType, event.Success)
 	return nil
 }

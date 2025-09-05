@@ -125,14 +125,14 @@ func LogVoiceEvent(event interface{}, message string, fields ...zap.Field) {
 }
 
 // LogAudioProcessing logs audio processing events
-func LogAudioProcessing(puckID, stage string, fields ...zap.Field) {
+func LogAudioProcessing(relayID, stage string, fields ...zap.Field) {
 	if Logger == nil {
 		return
 	}
 
 	baseFields := []zap.Field{
 		zap.String("component", "audio_processing"),
-		zap.String("puck_id", puckID),
+		zap.String("relay_id", relayID),
 		zap.String("stage", stage),
 	}
 

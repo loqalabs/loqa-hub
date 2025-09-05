@@ -50,7 +50,7 @@ func (s *VoiceEventsStore) Insert(event *events.VoiceEvent) error {
 
 	query := `
 		INSERT INTO voice_events (
-			uuid, request_id, puck_id, timestamp,
+			uuid, request_id, relay_id, timestamp,
 			audio_hash, audio_duration, sample_rate, wake_word_detected,
 			transcription, intent, entities, confidence,
 			response_text, processing_time_ms, success, error_message
@@ -62,7 +62,7 @@ func (s *VoiceEventsStore) Insert(event *events.VoiceEvent) error {
 		)`
 
 	_, err = s.db.DB().Exec(query,
-		event.UUID, event.RequestID, event.PuckID, event.Timestamp,
+		event.UUID, event.RequestID, event.RelayID, event.Timestamp,
 		event.AudioHash, event.AudioDuration, event.SampleRate, event.WakeWordDetected,
 		event.Transcription, event.Intent, entitiesJSON, event.Confidence,
 		event.ResponseText, event.ProcessingTime, event.Success, event.ErrorMessage,
@@ -72,15 +72,15 @@ func (s *VoiceEventsStore) Insert(event *events.VoiceEvent) error {
 		return fmt.Errorf("failed to insert voice event: %w", err)
 	}
 
-	log.Printf("📝 Stored voice event: %s (PuckID: %s, Intent: %s)", 
-		event.UUID, event.PuckID, event.Intent)
+	log.Printf("📝 Stored voice event: %s (RelayID: %s, Intent: %s)",
+		event.UUID, event.RelayID, event.Intent)
 	return nil
 }
 
 // GetByUUID retrieves a voice event by its UUID
 func (s *VoiceEventsStore) GetByUUID(uuid string) (*events.VoiceEvent, error) {
 	query := `
-		SELECT uuid, request_id, puck_id, timestamp,
+		SELECT uuid, request_id, relay_id, timestamp,
 			   audio_hash, audio_duration, sample_rate, wake_word_detected,
 			   transcription, intent, entities, confidence,
 			   response_text, processing_time_ms, success, error_message
@@ -94,7 +94,7 @@ func (s *VoiceEventsStore) GetByUUID(uuid string) (*events.VoiceEvent, error) {
 // List retrieves voice events with pagination and filtering
 func (s *VoiceEventsStore) List(options ListOptions) ([]*events.VoiceEvent, error) {
 	query, args := s.buildListQuery(options)
-	
+
 	rows, err := s.db.DB().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query voice events: %w", err)
@@ -123,10 +123,10 @@ func (s *VoiceEventsStore) Count(options ListOptions) (int64, error) {
 	options.Limit = 0
 	options.Offset = 0
 	query, args := s.buildListQuery(options)
-	
+
 	// Replace SELECT fields with COUNT(*)
 	countQuery := "SELECT COUNT(*) FROM (" + query + ") as filtered"
-	
+
 	var count int64
 	err := s.db.DB().QueryRow(countQuery, args...).Scan(&count)
 	if err != nil {
@@ -136,11 +136,11 @@ func (s *VoiceEventsStore) Count(options ListOptions) (int64, error) {
 	return count, nil
 }
 
-// GetRecentByPuck retrieves recent events for a specific puck
-func (s *VoiceEventsStore) GetRecentByPuck(puckID string, limit int) ([]*events.VoiceEvent, error) {
+// GetRecentByRelay retrieves recent events for a specific relay
+func (s *VoiceEventsStore) GetRecentByRelay(relayID string, limit int) ([]*events.VoiceEvent, error) {
 	options := ListOptions{
-		PuckID: puckID,
-		Limit:  limit,
+		RelayID: relayID,
+		Limit:   limit,
 	}
 	return s.List(options)
 }
@@ -148,7 +148,7 @@ func (s *VoiceEventsStore) GetRecentByPuck(puckID string, limit int) ([]*events.
 // GetByAudioHash finds events with the same audio hash (potential duplicates)
 func (s *VoiceEventsStore) GetByAudioHash(audioHash string) ([]*events.VoiceEvent, error) {
 	query := `
-		SELECT uuid, request_id, puck_id, timestamp,
+		SELECT uuid, request_id, relay_id, timestamp,
 			   audio_hash, audio_duration, sample_rate, wake_word_detected,
 			   transcription, intent, entities, confidence,
 			   response_text, processing_time_ms, success, error_message
@@ -197,16 +197,16 @@ func (s *VoiceEventsStore) Delete(uuid string) error {
 // ListOptions defines filtering and pagination options
 type ListOptions struct {
 	// Filtering
-	PuckID    string
+	RelayID   string
 	Intent    string
 	Success   *bool // nil = all, true = success only, false = errors only
 	StartTime *time.Time
 	EndTime   *time.Time
-	
-	// Pagination  
+
+	// Pagination
 	Limit  int
 	Offset int
-	
+
 	// Sorting
 	SortBy    string // "timestamp", "confidence", "processing_time"
 	SortOrder string // "ASC", "DESC"
@@ -215,18 +215,18 @@ type ListOptions struct {
 // buildListQuery constructs the SQL query based on ListOptions
 func (s *VoiceEventsStore) buildListQuery(options ListOptions) (string, []interface{}) {
 	query := `
-		SELECT uuid, request_id, puck_id, timestamp,
+		SELECT uuid, request_id, relay_id, timestamp,
 			   audio_hash, audio_duration, sample_rate, wake_word_detected,
 			   transcription, intent, entities, confidence,
 			   response_text, processing_time_ms, success, error_message
 		FROM voice_events WHERE 1=1`
-	
+
 	var args []interface{}
 
 	// Apply filters
-	if options.PuckID != "" {
-		query += " AND puck_id = ?"
-		args = append(args, options.PuckID)
+	if options.RelayID != "" {
+		query += " AND relay_id = ?"
+		args = append(args, options.RelayID)
 	}
 
 	if options.Intent != "" {
@@ -254,19 +254,19 @@ func (s *VoiceEventsStore) buildListQuery(options ListOptions) (string, []interf
 	if sortBy == "" {
 		sortBy = "timestamp"
 	}
-	
+
 	sortOrder := options.SortOrder
 	if sortOrder == "" {
 		sortOrder = "DESC"
 	}
-	
+
 	query += fmt.Sprintf(" ORDER BY %s %s", sortBy, sortOrder)
 
 	// Apply pagination
 	if options.Limit > 0 {
 		query += " LIMIT ?"
 		args = append(args, options.Limit)
-		
+
 		if options.Offset > 0 {
 			query += " OFFSET ?"
 			args = append(args, options.Offset)
@@ -295,7 +295,7 @@ func (s *VoiceEventsStore) scanVoiceEvent(scanner interface{}) (*events.VoiceEve
 	}
 
 	err := row.Scan(
-		&event.UUID, &event.RequestID, &event.PuckID, &event.Timestamp,
+		&event.UUID, &event.RequestID, &event.RelayID, &event.Timestamp,
 		&event.AudioHash, &event.AudioDuration, &event.SampleRate, &event.WakeWordDetected,
 		&event.Transcription, &event.Intent, &entitiesJSON, &event.Confidence,
 		&event.ResponseText, &event.ProcessingTime, &event.Success, &event.ErrorMessage,

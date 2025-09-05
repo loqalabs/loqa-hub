@@ -34,7 +34,7 @@ type VoiceEvent struct {
 	// Core identification
 	UUID      string    `json:"uuid" db:"uuid"`
 	RequestID string    `json:"request_id" db:"request_id"`
-	PuckID    string    `json:"puck_id" db:"puck_id"`
+	RelayID   string    `json:"relay_id" db:"relay_id"`
 	Timestamp time.Time `json:"timestamp" db:"timestamp"`
 
 	// Audio metadata
@@ -57,11 +57,11 @@ type VoiceEvent struct {
 }
 
 // NewVoiceEvent creates a new VoiceEvent with generated UUID and current timestamp
-func NewVoiceEvent(puckID, requestID string) *VoiceEvent {
+func NewVoiceEvent(relayID, requestID string) *VoiceEvent {
 	return &VoiceEvent{
 		UUID:      generateUUID(),
 		RequestID: requestID,
-		PuckID:    puckID,
+		RelayID:   relayID,
 		Timestamp: time.Now(),
 		Entities:  make(map[string]string),
 		Success:   true,
@@ -76,11 +76,11 @@ func generateUUID() string {
 		// Fallback to timestamp-based ID if random fails
 		return fmt.Sprintf("loqa-%d", time.Now().UnixNano())
 	}
-	
+
 	// Set version (4) and variant bits
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80
-	
+
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
@@ -120,13 +120,13 @@ func (ve *VoiceEvent) SetError(err error) {
 // calculateAudioHash generates a SHA-256 hash of the audio data for duplicate detection
 func (ve *VoiceEvent) calculateAudioHash(audioData []float32) string {
 	hasher := sha256.New()
-	
+
 	// Convert float32 slice to bytes for hashing
 	for _, sample := range audioData {
 		bytes := (*[4]byte)(unsafe.Pointer(&sample))[:]
 		hasher.Write(bytes)
 	}
-	
+
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
@@ -135,12 +135,12 @@ func (ve *VoiceEvent) EntitiesJSON() (string, error) {
 	if ve.Entities == nil {
 		return "{}", nil
 	}
-	
+
 	data, err := json.Marshal(ve.Entities)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal entities: %w", err)
 	}
-	
+
 	return string(data), nil
 }
 
@@ -150,12 +150,12 @@ func (ve *VoiceEvent) SetEntitiesFromJSON(jsonStr string) error {
 		ve.Entities = make(map[string]string)
 		return nil
 	}
-	
+
 	var entities map[string]string
 	if err := json.Unmarshal([]byte(jsonStr), &entities); err != nil {
 		return fmt.Errorf("failed to unmarshal entities JSON: %w", err)
 	}
-	
+
 	ve.Entities = entities
 	return nil
 }
@@ -165,28 +165,28 @@ func (ve *VoiceEvent) IsValid() error {
 	if ve.UUID == "" {
 		return fmt.Errorf("UUID is required")
 	}
-	
-	if ve.PuckID == "" {
-		return fmt.Errorf("puckID is required")
+
+	if ve.RelayID == "" {
+		return fmt.Errorf("relayID is required")
 	}
-	
+
 	if ve.RequestID == "" {
 		return fmt.Errorf("requestID is required")
 	}
-	
+
 	if ve.Timestamp.IsZero() {
 		return fmt.Errorf("timestamp is required")
 	}
-	
+
 	if ve.Confidence < 0 || ve.Confidence > 1 {
 		return fmt.Errorf("confidence must be between 0 and 1")
 	}
-	
+
 	return nil
 }
 
 // String returns a human-readable representation of the voice event
 func (ve *VoiceEvent) String() string {
-	return fmt.Sprintf("VoiceEvent{UUID: %s, PuckID: %s, Intent: %s, Transcription: %q, Confidence: %.2f, Success: %t}",
-		ve.UUID, ve.PuckID, ve.Intent, ve.Transcription, ve.Confidence, ve.Success)
+	return fmt.Sprintf("VoiceEvent{UUID: %s, RelayID: %s, Intent: %s, Transcription: %q, Confidence: %.2f, Success: %t}",
+		ve.UUID, ve.RelayID, ve.Intent, ve.Transcription, ve.Confidence, ve.Success)
 }

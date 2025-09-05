@@ -77,10 +77,10 @@ func TestVoicePipelineEndToEnd(t *testing.T) {
 		t.Fatalf("Hub connectivity test failed: %v", err)
 	}
 
-	// Run test puck for a short duration
-	t.Log("Testing puck connection...")
-	if err := testPuckConnection(ctx); err != nil {
-		t.Logf("Warning: Puck connection test failed: %v", err)
+	// Run test relay for a short duration
+	t.Log("Testing relay connection...")
+	if err := testRelayConnection(ctx); err != nil {
+		t.Logf("Warning: Relay connection test failed: %v", err)
 	}
 
 	t.Log("Voice pipeline e2e test completed successfully")
@@ -103,25 +103,25 @@ func testHubConnectivity(ctx context.Context) error {
 	return nil
 }
 
-func testPuckConnection(ctx context.Context) error {
-	// Check if test puck binary exists
-	puckPath := "../../bin/test-puck"
-	if _, err := os.Stat(puckPath); os.IsNotExist(err) {
+func testRelayConnection(ctx context.Context) error {
+	// Check if test relay binary exists
+	relayPath := "../../bin/test-relay"
+	if _, err := os.Stat(relayPath); os.IsNotExist(err) {
 		return nil // Skip if binary doesn't exist
 	}
 
-	// Run test puck for a short duration
-	puckCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	// Run test relay for a short duration
+	relayCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	puckCmd := exec.CommandContext(puckCtx, puckPath, "--hub", "localhost:50051")
-	puckCmd.Dir = "../.."
+	relayCmd := exec.CommandContext(relayCtx, relayPath, "--hub", "localhost:50051")
+	relayCmd.Dir = "../.."
 
-	// Start puck and let it run briefly
-	if err := puckCmd.Start(); err != nil {
+	// Start relay and let it run briefly
+	if err := relayCmd.Start(); err != nil {
 		return err
 	}
 
 	// Wait for context timeout or process completion
-	return puckCmd.Wait()
+	return relayCmd.Wait()
 }

@@ -25,22 +25,22 @@ import (
 	"os"
 	"time"
 
-	"go.uber.org/zap"
-	pb "github.com/loqalabs/loqa-proto/go/audio"
 	"github.com/loqalabs/loqa-hub/internal/events"
 	"github.com/loqalabs/loqa-hub/internal/llm"
 	"github.com/loqalabs/loqa-hub/internal/logging"
 	"github.com/loqalabs/loqa-hub/internal/messaging"
 	"github.com/loqalabs/loqa-hub/internal/storage"
+	pb "github.com/loqalabs/loqa-proto/go/audio"
+	"go.uber.org/zap"
 )
 
 // AudioService implements the gRPC AudioService
 type AudioService struct {
 	pb.UnimplementedAudioServiceServer
-	transcriber    llm.Transcriber
-	commandParser  *llm.CommandParser
-	natsService    *messaging.NATSService
-	eventsStore    *storage.VoiceEventsStore
+	transcriber   llm.Transcriber
+	commandParser *llm.CommandParser
+	natsService   *messaging.NATSService
+	eventsStore   *storage.VoiceEventsStore
 }
 
 // NewAudioServiceWithSTT creates a new audio service using OpenAI-compatible STT service
@@ -60,14 +60,14 @@ func createAudioService(transcriber llm.Transcriber, eventsStore *storage.VoiceE
 	if ollamaURL == "" {
 		ollamaURL = "http://localhost:11434"
 	}
-	
+
 	ollamaModel := os.Getenv("OLLAMA_MODEL")
 	if ollamaModel == "" {
 		ollamaModel = "llama3.2:3b"
 	}
 
 	commandParser := llm.NewCommandParser(ollamaURL, ollamaModel)
-	
+
 	// Initialize NATS service
 	natsService, err := messaging.NewNATSService()
 	if err != nil {
@@ -100,12 +100,12 @@ func createAudioService(transcriber llm.Transcriber, eventsStore *storage.VoiceE
 	}, nil
 }
 
-// StreamAudio handles bidirectional audio streaming from pucks
+// StreamAudio handles bidirectional audio streaming from relay devices
 func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) error {
 	logging.Sugar.Info("🎙️  Hub: New audio stream connected")
 
 	for {
-		// Receive audio chunk from puck
+		// Receive audio chunk from relay
 		chunk, err := stream.Recv()
 		if err == io.EOF {
 			logging.Sugar.Info("🎙️  Hub: Audio stream ended")
@@ -116,114 +116,114 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			return err
 		}
 
-		logging.LogAudioProcessing(chunk.PuckId, "received", 
+		logging.LogAudioProcessing(chunk.RelayId, "received",
 			zap.Int("bytes", len(chunk.AudioData)),
 			zap.Bool("wake_word", chunk.IsWakeWord),
 		)
 
 		// Process audio if it's end of speech
 		if chunk.IsEndOfSpeech {
-			logging.LogAudioProcessing(chunk.PuckId, "processing_utterance")
+			logging.LogAudioProcessing(chunk.RelayId, "processing_utterance")
 
 			// Create voice event for tracking
-			voiceEvent := events.NewVoiceEvent(chunk.PuckId, chunk.PuckId)
+			voiceEvent := events.NewVoiceEvent(chunk.RelayId, chunk.RelayId)
 
 			// Convert audio bytes back to float32
 			audioData := bytesToFloat32Array(chunk.AudioData)
-			
+
 			// Validate converted audio data
 			if len(audioData) == 0 {
 				logging.LogWarn("Empty audio data after conversion",
-					zap.String("puck_id", chunk.PuckId),
+					zap.String("relay_id", chunk.RelayId),
 					zap.Int("original_bytes", len(chunk.AudioData)),
 				)
 				voiceEvent.SetResponse("Invalid audio data received")
 				as.storeVoiceEvent(voiceEvent)
-				
-				// Send error response back to puck
+
+				// Send error response back to relay
 				response := &pb.AudioResponse{
-					RequestId:     chunk.PuckId,
+					RequestId:     chunk.RelayId,
 					Transcription: "",
 					Command:       "error",
 					ResponseText:  "Invalid audio data received. Please try again.",
 					Success:       false,
 				}
 				if err := stream.Send(response); err != nil {
-					logging.LogError(err, "Error sending empty-audio response to puck")
+					logging.LogError(err, "Error sending empty-audio response to relay")
 					return err
 				}
 				continue
 			}
-			
+
 			// Set audio metadata
 			voiceEvent.SetAudioMetadata(audioData, int(chunk.SampleRate), chunk.IsWakeWord)
-			
+
 			// Transcribe audio using STT service (with panic recovery and detailed logging)
 			var transcription string
 			var err error
-			
+
 			// Log audio data characteristics before STT call
-			logging.LogAudioProcessing(chunk.PuckId, "stt_pre_call",
+			logging.LogAudioProcessing(chunk.RelayId, "stt_pre_call",
 				zap.Int("samples_count", len(audioData)),
 				zap.Int("sample_rate", int(chunk.SampleRate)),
 				zap.Float32("audio_min", findMin(audioData)),
 				zap.Float32("audio_max", findMax(audioData)),
 				zap.String("event_uuid", voiceEvent.UUID),
 			)
-			
+
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
 						err = fmt.Errorf("STT transcription panic: %v", r)
 						logging.LogError(err, "STT panic recovered",
-							zap.String("puck_id", chunk.PuckId),
+							zap.String("relay_id", chunk.RelayId),
 							zap.String("event_uuid", voiceEvent.UUID),
 							zap.Int("samples_count", len(audioData)),
 						)
 					}
 				}()
-				
-				logging.LogAudioProcessing(chunk.PuckId, "stt_calling",
+
+				logging.LogAudioProcessing(chunk.RelayId, "stt_calling",
 					zap.String("event_uuid", voiceEvent.UUID),
 				)
-				
+
 				transcription, err = as.transcriber.Transcribe(audioData, int(chunk.SampleRate))
-				
-				logging.LogAudioProcessing(chunk.PuckId, "stt_returned",
+
+				logging.LogAudioProcessing(chunk.RelayId, "stt_returned",
 					zap.String("event_uuid", voiceEvent.UUID),
 					zap.Bool("success", err == nil),
 					zap.Int("transcription_length", len(transcription)),
 				)
 			}()
-			
+
 			if err != nil {
-				logging.LogError(err, "Error transcribing audio", 
-					zap.String("puck_id", chunk.PuckId),
+				logging.LogError(err, "Error transcribing audio",
+					zap.String("relay_id", chunk.RelayId),
 					zap.String("event_uuid", voiceEvent.UUID),
 				)
 				voiceEvent.SetError(err)
 				voiceEvent.SetResponse("Sorry, I couldn't process your audio. Please try again.")
 				as.storeVoiceEvent(voiceEvent)
-				
-				// Send error response back to puck
+
+				// Send error response back to relay
 				response := &pb.AudioResponse{
-					RequestId:     chunk.PuckId,
+					RequestId:     chunk.RelayId,
 					Transcription: "",
 					Command:       "error",
 					ResponseText:  "Sorry, I couldn't process your audio. Please try again.",
 					Success:       false,
 				}
 				if err := stream.Send(response); err != nil {
-					logging.LogError(err, "Error sending error response to puck")
+					logging.LogError(err, "Error sending error response to relay")
 					return err
 				}
 				continue
 			}
-			
+
 			// Set transcription result
 			voiceEvent.SetTranscription(transcription)
-			
-			logging.LogAudioProcessing(chunk.PuckId, "transcribed",
+
+			logging.LogAudioProcessing(chunk.RelayId, "transcribed",
 				zap.String("event_uuid", voiceEvent.UUID),
 				zap.Int("audio_samples", len(audioData)),
 				zap.String("transcription", transcription),
@@ -231,22 +231,22 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			)
 
 			if transcription == "" {
-				logging.LogAudioProcessing(chunk.PuckId, "no_speech_detected",
+				logging.LogAudioProcessing(chunk.RelayId, "no_speech_detected",
 					zap.String("event_uuid", voiceEvent.UUID),
 				)
 				voiceEvent.SetResponse("No speech detected")
 				as.storeVoiceEvent(voiceEvent)
-				
-				// Send response back to puck for no speech detected
+
+				// Send response back to relay for no speech detected
 				response := &pb.AudioResponse{
-					RequestId:     chunk.PuckId,
+					RequestId:     chunk.RelayId,
 					Transcription: "",
 					Command:       "no_speech",
 					ResponseText:  "I didn't hear anything. Please try again.",
 					Success:       true,
 				}
 				if err := stream.Send(response); err != nil {
-					logging.LogError(err, "Error sending no-speech response to puck")
+					logging.LogError(err, "Error sending no-speech response to relay")
 					return err
 				}
 				continue
@@ -255,8 +255,8 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			// Parse command using LLM
 			command, err := as.commandParser.ParseCommand(transcription)
 			if err != nil {
-				logging.LogError(err, "Error parsing command", 
-					zap.String("puck_id", chunk.PuckId),
+				logging.LogError(err, "Error parsing command",
+					zap.String("relay_id", chunk.RelayId),
 					zap.String("event_uuid", voiceEvent.UUID),
 					zap.String("transcription", transcription),
 				)
@@ -273,8 +273,8 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 
 			commandStr := command.Intent
 			responseText := command.Response
-			
-			logging.LogAudioProcessing(chunk.PuckId, "command_parsed",
+
+			logging.LogAudioProcessing(chunk.RelayId, "command_parsed",
 				zap.String("event_uuid", voiceEvent.UUID),
 				zap.String("intent", command.Intent),
 				zap.Float64("confidence", command.Confidence),
@@ -284,24 +284,24 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			// Publish command event to NATS
 			if as.natsService != nil && as.natsService.IsConnected() {
 				commandEvent := &messaging.CommandEvent{
-					PuckID:        chunk.PuckId,
+					RelayID:       chunk.RelayId,
 					Transcription: transcription,
 					Intent:        command.Intent,
 					Entities:      command.Entities,
 					Confidence:    command.Confidence,
 					Timestamp:     time.Now().UnixNano(),
-					RequestID:     chunk.PuckId, // Using puck ID as request ID for now
+					RequestID:     chunk.RelayId, // Using relay ID as request ID for now
 				}
 
 				if err := as.natsService.PublishVoiceCommand(commandEvent); err != nil {
-					logging.LogWarn("Failed to publish voice command to NATS", 
+					logging.LogWarn("Failed to publish voice command to NATS",
 						zap.Error(err),
-						zap.String("puck_id", chunk.PuckId),
+						zap.String("relay_id", chunk.RelayId),
 						zap.String("event_uuid", voiceEvent.UUID),
 					)
 				} else {
 					logging.LogNATSEvent("loqa.voice.commands", "published",
-						zap.String("puck_id", chunk.PuckId),
+						zap.String("relay_id", chunk.RelayId),
 						zap.String("intent", command.Intent),
 					)
 				}
@@ -311,7 +311,7 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 					deviceCommand := as.createDeviceCommand(commandEvent)
 					if deviceCommand != nil {
 						if err := as.natsService.PublishDeviceCommand(deviceCommand); err != nil {
-							logging.LogWarn("Failed to publish device command to NATS", 
+							logging.LogWarn("Failed to publish device command to NATS",
 								zap.Error(err),
 								zap.String("device_type", deviceCommand.DeviceType),
 							)
@@ -325,9 +325,9 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 				}
 			}
 
-			// Send response back to puck
+			// Send response back to relay
 			response := &pb.AudioResponse{
-				RequestId:     chunk.PuckId, // Use puck ID as request ID
+				RequestId:     chunk.RelayId, // Use relay ID as request ID
 				Transcription: transcription,
 				Command:       commandStr,
 				ResponseText:  responseText,
@@ -335,8 +335,8 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			}
 
 			if err := stream.Send(response); err != nil {
-				logging.LogError(err, "Error sending response to puck",
-					zap.String("puck_id", chunk.PuckId),
+				logging.LogError(err, "Error sending response to relay",
+					zap.String("relay_id", chunk.RelayId),
 					zap.String("event_uuid", voiceEvent.UUID),
 				)
 				return err
@@ -346,7 +346,7 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			voiceEvent.SetResponse(responseText)
 			as.storeVoiceEvent(voiceEvent)
 
-			logging.LogAudioProcessing(chunk.PuckId, "response_sent",
+			logging.LogAudioProcessing(chunk.RelayId, "response_sent",
 				zap.String("event_uuid", voiceEvent.UUID),
 				zap.String("intent", commandStr),
 				zap.String("response", responseText),
@@ -388,13 +388,13 @@ func bytesToFloat32Array(data []byte) []float32 {
 	if len(data) == 0 {
 		return []float32{}
 	}
-	
+
 	// Ensure even number of bytes for 16-bit PCM
 	dataLen := len(data)
 	if dataLen%2 != 0 {
 		dataLen -= 1 // Drop the last incomplete sample
 	}
-	
+
 	// Convert 16-bit PCM bytes to float32 samples
 	samples := make([]float32, dataLen/2)
 	for i := 0; i < len(samples); i++ {
@@ -452,13 +452,13 @@ func (as *AudioService) extractDeviceType(entities map[string]string) string {
 	if device, exists := entities["device"]; exists {
 		// Map common device names to types
 		deviceMap := map[string]string{
-			"lights": "lights",
-			"light":  "lights",
-			"lamp":   "lights",
-			"music":  "audio",
-			"audio":  "audio",
-			"sound":  "audio",
-			"tv":     "tv",
+			"lights":     "lights",
+			"light":      "lights",
+			"lamp":       "lights",
+			"music":      "audio",
+			"audio":      "audio",
+			"sound":      "audio",
+			"tv":         "tv",
 			"television": "tv",
 		}
 		if deviceType, found := deviceMap[device]; found {
@@ -494,9 +494,9 @@ func (as *AudioService) storeVoiceEvent(voiceEvent *events.VoiceEvent) {
 	}
 
 	if err := as.eventsStore.Insert(voiceEvent); err != nil {
-		logging.LogError(err, "Failed to store voice event", 
+		logging.LogError(err, "Failed to store voice event",
 			zap.String("event_uuid", voiceEvent.UUID),
-			zap.String("puck_id", voiceEvent.PuckID),
+			zap.String("relay_id", voiceEvent.RelayID),
 		)
 	} else {
 		logging.LogDatabaseOperation("insert", "voice_events",

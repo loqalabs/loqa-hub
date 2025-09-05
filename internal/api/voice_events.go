@@ -25,10 +25,10 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/loqalabs/loqa-hub/internal/events"
 	"github.com/loqalabs/loqa-hub/internal/logging"
 	"github.com/loqalabs/loqa-hub/internal/storage"
+	"go.uber.org/zap"
 )
 
 // VoiceEventsHandler handles HTTP requests for voice events
@@ -52,7 +52,7 @@ type ListVoiceEventsResponse struct {
 
 // CreateVoiceEventRequest represents the request for creating a voice event
 type CreateVoiceEventRequest struct {
-	PuckID           string            `json:"puck_id"`
+	RelayID          string            `json:"relay_id"`
 	RequestID        string            `json:"request_id"`
 	Transcription    string            `json:"transcription"`
 	Intent           string            `json:"intent"`
@@ -98,7 +98,7 @@ func (h *VoiceEventsHandler) HandleVoiceEventByID(w http.ResponseWriter, r *http
 func (h *VoiceEventsHandler) listVoiceEvents(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	query := r.URL.Query()
-	
+
 	// Pagination
 	page := parseIntParam(query.Get("page"), 1)
 	pageSize := parseIntParam(query.Get("page_size"), 20)
@@ -114,7 +114,7 @@ func (h *VoiceEventsHandler) listVoiceEvents(w http.ResponseWriter, r *http.Requ
 
 	// Filtering
 	options := storage.ListOptions{
-		PuckID:    query.Get("puck_id"),
+		RelayID:   query.Get("relay_id"),
 		Intent:    query.Get("intent"),
 		Limit:     pageSize,
 		Offset:    (page - 1) * pageSize,
@@ -174,9 +174,9 @@ func (h *VoiceEventsHandler) listVoiceEvents(w http.ResponseWriter, r *http.Requ
 		"page_size", pageSize,
 		"total_results", total,
 		"filters", map[string]interface{}{
-			"puck_id": options.PuckID,
-			"intent":  options.Intent,
-			"success": options.Success,
+			"relay_id": options.RelayID,
+			"intent":   options.Intent,
+			"success":  options.Success,
 		},
 	)
 
@@ -193,17 +193,17 @@ func (h *VoiceEventsHandler) createVoiceEvent(w http.ResponseWriter, r *http.Req
 	}
 
 	// Validate required fields
-	if req.PuckID == "" {
-		http.Error(w, "puck_id is required", http.StatusBadRequest)
+	if req.RelayID == "" {
+		http.Error(w, "relay_id is required", http.StatusBadRequest)
 		return
 	}
 	if req.RequestID == "" {
-		req.RequestID = req.PuckID // Default to puck ID
+		req.RequestID = req.RelayID // Default to relay ID
 	}
 
 	// Create voice event
-	voiceEvent := events.NewVoiceEvent(req.PuckID, req.RequestID)
-	
+	voiceEvent := events.NewVoiceEvent(req.RelayID, req.RequestID)
+
 	// Set fields from request
 	voiceEvent.SetTranscription(req.Transcription)
 	voiceEvent.SetCommandResult(req.Intent, req.Entities, req.Confidence)
@@ -222,8 +222,8 @@ func (h *VoiceEventsHandler) createVoiceEvent(w http.ResponseWriter, r *http.Req
 
 	// Store in database
 	if err := h.store.Insert(voiceEvent); err != nil {
-		logging.LogError(err, "Failed to create voice event", 
-			zap.String("puck_id", req.PuckID),
+		logging.LogError(err, "Failed to create voice event",
+			zap.String("relay_id", req.RelayID),
 		)
 		http.Error(w, "Failed to create voice event", http.StatusInternalServerError)
 		return
@@ -231,7 +231,7 @@ func (h *VoiceEventsHandler) createVoiceEvent(w http.ResponseWriter, r *http.Req
 
 	logging.Sugar.Infow("Voice event created via API",
 		"event_uuid", voiceEvent.UUID,
-		"puck_id", req.PuckID,
+		"relay_id", req.RelayID,
 		"intent", req.Intent,
 	)
 
@@ -248,7 +248,7 @@ func (h *VoiceEventsHandler) getVoiceEventByID(w http.ResponseWriter, r *http.Re
 			http.Error(w, "Voice event not found", http.StatusNotFound)
 			return
 		}
-		logging.LogError(err, "Failed to get voice event", 
+		logging.LogError(err, "Failed to get voice event",
 			zap.String("uuid", uuid),
 		)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -257,7 +257,7 @@ func (h *VoiceEventsHandler) getVoiceEventByID(w http.ResponseWriter, r *http.Re
 
 	logging.Sugar.Infow("Voice event retrieved via API",
 		"event_uuid", uuid,
-		"puck_id", event.PuckID,
+		"relay_id", event.RelayID,
 		"intent", event.Intent,
 	)
 
@@ -270,10 +270,10 @@ func parseIntParam(param string, defaultValue int) int {
 	if param == "" {
 		return defaultValue
 	}
-	
+
 	if value, err := strconv.Atoi(param); err == nil {
 		return value
 	}
-	
+
 	return defaultValue
 }

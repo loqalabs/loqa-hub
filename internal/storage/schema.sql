@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS voice_events (
     -- Core identification
     uuid TEXT PRIMARY KEY NOT NULL,
     request_id TEXT NOT NULL,
-    puck_id TEXT NOT NULL,
+    relay_id TEXT NOT NULL,
     timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     
     -- Audio metadata
@@ -37,12 +37,12 @@ CREATE TABLE IF NOT EXISTS voice_events (
 
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_voice_events_timestamp ON voice_events(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_voice_events_puck_id ON voice_events(puck_id);
+CREATE INDEX IF NOT EXISTS idx_voice_events_relay_id ON voice_events(relay_id);
 CREATE INDEX IF NOT EXISTS idx_voice_events_intent ON voice_events(intent);
 CREATE INDEX IF NOT EXISTS idx_voice_events_success ON voice_events(success);
 CREATE INDEX IF NOT EXISTS idx_voice_events_audio_hash ON voice_events(audio_hash);
 CREATE INDEX IF NOT EXISTS idx_voice_events_created_at ON voice_events(created_at DESC);
 
 -- Composite indexes for common query patterns
-CREATE INDEX IF NOT EXISTS idx_voice_events_puck_timestamp ON voice_events(puck_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_voice_events_relay_timestamp ON voice_events(relay_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_voice_events_intent_confidence ON voice_events(intent, confidence DESC);
