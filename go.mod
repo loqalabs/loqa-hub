@@ -3,14 +3,12 @@ module github.com/loqalabs/loqa-hub
 go 1.23.0
 
 require (
-	github.com/loqalabs/loqa-proto/go v0.0.0-00010101000000-000000000000
+	github.com/loqalabs/loqa-proto/go v0.0.17
 	github.com/nats-io/nats.go v1.45.0
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.75.0
 	modernc.org/sqlite v1.38.2
 )
-
-replace github.com/loqalabs/loqa-proto/go => ../loqa-proto/go
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
