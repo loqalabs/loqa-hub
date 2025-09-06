@@ -11,9 +11,6 @@ RUN apk add --no-cache git ca-certificates
 # Set working directory
 WORKDIR /app
 
-# Copy proto module first (needed for local replace)
-COPY loqa-proto ./loqa-proto
-
 # Copy loqa-hub 
 COPY loqa-hub ./loqa-hub
 WORKDIR /app/loqa-hub
