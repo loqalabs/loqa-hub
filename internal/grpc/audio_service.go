@@ -155,8 +155,9 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 				continue
 			}
 
-			// Set audio metadata
-			voiceEvent.SetAudioMetadata(audioData, int(chunk.SampleRate), chunk.IsWakeWord)
+			// Set audio metadata (safe conversion from int32 to int)
+			sampleRate := int(chunk.SampleRate)
+			voiceEvent.SetAudioMetadata(audioData, sampleRate, chunk.IsWakeWord)
 
 			// Transcribe audio using STT service (with panic recovery and detailed logging)
 			var transcription string
@@ -165,7 +166,7 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			// Log audio data characteristics before STT call
 			logging.LogAudioProcessing(chunk.RelayId, "stt_pre_call",
 				zap.Int("samples_count", len(audioData)),
-				zap.Int("sample_rate", int(chunk.SampleRate)),
+				zap.Int("sample_rate", sampleRate), // Use the validated sample rate
 				zap.Float32("audio_min", findMin(audioData)),
 				zap.Float32("audio_max", findMax(audioData)),
 				zap.String("event_uuid", voiceEvent.UUID),
@@ -187,7 +188,7 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 					zap.String("event_uuid", voiceEvent.UUID),
 				)
 
-				transcription, err = as.transcriber.Transcribe(audioData, int(chunk.SampleRate))
+				transcription, err = as.transcriber.Transcribe(audioData, sampleRate)
 
 				logging.LogAudioProcessing(chunk.RelayId, "stt_returned",
 					zap.String("event_uuid", voiceEvent.UUID),

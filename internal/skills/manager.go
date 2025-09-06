@@ -26,7 +26,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,7 +42,29 @@ var (
 	ErrPermissionDenied    = errors.New("permission denied")
 	ErrSkillInitFailed     = errors.New("skill initialization failed")
 	ErrNoSkillCanHandle    = errors.New("no skill can handle this intent")
+	ErrInvalidSkillID      = errors.New("invalid skill ID")
 )
+
+// validateSkillID validates that a skill ID is safe for filesystem operations
+// and doesn't contain path traversal characters
+func validateSkillID(skillID string) error {
+	if skillID == "" {
+		return ErrInvalidSkillID
+	}
+	
+	// Check for path traversal attempts
+	if strings.Contains(skillID, "..") || strings.Contains(skillID, "/") || strings.Contains(skillID, "\\") {
+		return ErrInvalidSkillID
+	}
+	
+	// Only allow alphanumeric characters, hyphens, and underscores
+	validSkillID := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	if !validSkillID.MatchString(skillID) {
+		return ErrInvalidSkillID
+	}
+	
+	return nil
+}
 
 // SkillManagerConfig holds configuration for the skill manager
 type SkillManagerConfig struct {
@@ -416,6 +440,16 @@ func (sm *SkillManager) loadAllSkills(ctx context.Context) error {
 
 // loadManifest loads and validates a skill manifest
 func (sm *SkillManager) loadManifest(skillPath string) (*SkillManifest, error) {
+	// Validate the skill path to prevent directory traversal
+	if skillPath == "" {
+		return nil, fmt.Errorf("empty skill path")
+	}
+	
+	// Check for path traversal attempts
+	if strings.Contains(skillPath, "..") {
+		return nil, fmt.Errorf("invalid skill path: path traversal detected")
+	}
+	
 	manifestPath := filepath.Join(skillPath, "skill.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -430,6 +464,11 @@ func (sm *SkillManager) loadManifest(skillPath string) (*SkillManifest, error) {
 	// Basic validation
 	if manifest.ID == "" || manifest.Name == "" || manifest.Version == "" {
 		return nil, ErrInvalidManifest
+	}
+
+	// Validate the skill ID from the manifest
+	if err := validateSkillID(manifest.ID); err != nil {
+		return nil, fmt.Errorf("invalid skill ID in manifest: %w", err)
 	}
 
 	return &manifest, nil
@@ -459,6 +498,10 @@ func (sm *SkillManager) validateSkill(manifest *SkillManifest) error {
 
 // loadSkillConfig loads configuration for a skill
 func (sm *SkillManager) loadSkillConfig(skillID string) (*SkillConfig, error) {
+	if err := validateSkillID(skillID); err != nil {
+		return nil, fmt.Errorf("invalid skill ID: %w", err)
+	}
+	
 	configPath := filepath.Join(sm.config.ConfigStore, skillID+".json")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -472,6 +515,10 @@ func (sm *SkillManager) loadSkillConfig(skillID string) (*SkillConfig, error) {
 
 // saveSkillConfig saves configuration for a skill
 func (sm *SkillManager) saveSkillConfig(skillID string, config *SkillConfig) error {
+	if err := validateSkillID(skillID); err != nil {
+		return fmt.Errorf("invalid skill ID: %w", err)
+	}
+	
 	if sm.config.ConfigStore == "" {
 		return nil
 	}
