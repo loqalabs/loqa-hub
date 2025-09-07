@@ -85,7 +85,9 @@ func (h *SkillsHandler) HandleSkills(w http.ResponseWriter, r *http.Request) {
 
 // HandleSkillByID handles requests to /api/skills/{id}
 func (h *SkillsHandler) HandleSkillByID(w http.ResponseWriter, r *http.Request) {
-	skillID := extractSkillID(r.URL.Path)
+	// Sanitize URL path to prevent injection attacks
+	sanitizedPath := sanitizeLogInput(r.URL.Path)
+	skillID := extractSkillID(sanitizedPath)
 	if skillID == "" {
 		writeError(w, http.StatusBadRequest, "skill ID required")
 		return
@@ -116,7 +118,9 @@ func (h *SkillsHandler) HandleSkillAction(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	skillID, action := extractSkillIDAndAction(r.URL.Path)
+	// Sanitize URL path to prevent injection attacks
+	sanitizedPath := sanitizeLogInput(r.URL.Path)
+	skillID, action := extractSkillIDAndAction(sanitizedPath)
 	if skillID == "" || action == "" {
 		writeError(w, http.StatusBadRequest, "skill ID and action required")
 		return
