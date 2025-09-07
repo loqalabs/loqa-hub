@@ -1,0 +1,41 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Hub Service",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/cmd/main.go",
+            "env": {
+                "LOG_LEVEL": "debug",
+                "LOQA_PORT": "3000",
+                "LOQA_GRPC_PORT": "50051"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug Skills CLI",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/cmd/skills-cli/main.go",
+            "args": ["--action", "list"],
+            "env": {
+                "LOG_LEVEL": "debug"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Run Tests (Debug Mode)",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
+            "program": "${workspaceFolder}",
+            "env": {
+                "LOG_LEVEL": "debug"
+            },
+            "console": "integratedTerminal"
+        }
+    ]
+}

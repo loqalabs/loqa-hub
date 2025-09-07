@@ -1,0 +1,55 @@
+{
+    // Go language settings for hub service
+    "go.formatTool": "gofmt",
+    "go.lintTool": "golangci-lint",
+    "go.lintFlags": [
+        "--config", ".golangci.yml",
+        "--fast"
+    ],
+    "go.vetOnSave": "package",
+    "go.buildOnSave": "off",
+    "go.lintOnSave": "package",
+    "go.coverOnSave": false,
+    "go.formatFlags": ["-s"],
+    
+    // Editor settings for auto-formatting on save
+    "editor.formatOnSave": true,
+    "editor.formatOnPaste": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": "explicit",
+        "source.fixAll": "explicit"
+    },
+    
+    // Go-specific formatting
+    "[go]": {
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+    
+    // JSON formatting for configs
+    "[json]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "vscode.json-language-features"
+    },
+    
+    // YAML formatting for configs
+    "[yaml]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "redhat.vscode-yaml"
+    },
+    
+    // File associations
+    "files.associations": {
+        ".golangci.yml": "yaml",
+        "*.proto": "proto3"
+    },
+    
+    // Exclude build artifacts and logs
+    "files.exclude": {
+        "**/bin": true,
+        "**/*.log": true,
+        "**/coverage.out": true
+    }
+}

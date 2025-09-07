@@ -1,0 +1,22 @@
+{
+    "recommendations": [
+        // Go development
+        "golang.go",
+        
+        // YAML for configuration files
+        "redhat.vscode-yaml",
+        
+        // Protocol Buffers (used by hub)
+        "zxh404.vscode-proto3",
+        
+        // Git integration
+        "eamodio.gitlens",
+        
+        // Docker for containerization
+        "ms-azuretools.vscode-docker",
+        
+        // General productivity
+        "ms-vscode.vscode-json",
+        "christian-kohler.path-intellisense"
+    ]
+}
