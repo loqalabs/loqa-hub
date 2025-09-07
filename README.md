@@ -105,6 +105,17 @@ See the main [Loqa documentation](https://github.com/loqalabs/loqa) for setup an
 
 ## Development
 
+### Claude Code Configuration
+
+This repository includes a `.claude-code.json` configuration file that provides Claude Code with project-specific context:
+
+- **Service Role**: Central hub service that orchestrates communication between all microservices
+- **Testing Requirements**: Comprehensive unit, integration, and microservice communication testing
+- **Architecture Awareness**: Understands dependencies on loqa-proto and loqa-skills
+- **Cross-Service Coordination**: Knows how to coordinate changes across the microservice ecosystem
+
+See the main project documentation at [`loqa/config/CLAUDE.md`](https://github.com/loqalabs/loqa/blob/main/config/CLAUDE.md) for complete details.
+
 ### Local Development Setup
 
 ```bash
