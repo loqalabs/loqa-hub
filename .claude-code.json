@@ -12,7 +12,8 @@
     "ALWAYS run 'make quality-check' before any git push or commit",
     "NEVER push code that fails linting, formatting, type checking, or tests",
     "Fix all unused variables and ensure error messages start with lowercase letters",
-    "Run 'make lint-fix' to auto-fix formatting issues before manual fixes"
+    "Run 'make lint-fix' to auto-fix formatting issues before manual fixes",
+    "When adding labels to GitHub issues: First check existing labels with 'gh label list', look for semantically similar labels, use existing ones when possible, only create new labels when genuinely needed"
   ],
   "documentation_checklist": [
     "README.md files (main and service-specific)",
@@ -63,6 +64,33 @@
         "complex_changes": "Create matching feature branches across affected repos",
         "merge_order": "Supporting repos first (proto, skills), core services last"
       }
+    }
+  },
+  "github_issue_management": {
+    "tagging_workflow": {
+      "step_1": "Always run 'gh label list' first to see existing labels",
+      "step_2": "Look for semantically similar labels (e.g., 'dependencies' instead of 'deps', 'type: feature' instead of 'feature')",
+      "step_3": "Use existing labels when they match the intent, even if wording is slightly different",
+      "step_4": "Only create new labels when no existing label captures the concept",
+      "step_5": "When creating new labels, follow existing naming patterns (e.g., 'area:', 'type:', 'priority:')"
+    },
+    "label_categories": {
+      "type": ["type: bug", "type: feature", "type: chore", "type: improvement"],
+      "priority": ["priority: high", "priority: medium", "priority: low"],
+      "area": ["area: backend", "area: frontend", "area: docs", "area: infrastructure"],
+      "milestone": ["p1-mvp", "p2-high-impact", "p3-future"],
+      "component": ["skills", "dashboard", "stt", "tts", "llm", "relay", "mac-mini"]
+    },
+    "common_substitutions": {
+      "deps": "dependencies",
+      "feat": "type: feature",
+      "bug": "type: bug",
+      "docs": "area: docs",
+      "ui": "area: frontend",
+      "api": "area: backend",
+      "critical": "priority: high",
+      "urgent": "priority: high",
+      "low": "priority: low"
     }
   },
   "best_practices": [
