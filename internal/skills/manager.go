@@ -49,6 +49,13 @@ var (
 // Only allows alphanumeric ASCII characters, dashes, and underscores.
 var validSkillID = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
+// sanitizeLogInput removes newline characters to prevent log injection
+func sanitizeLogInput(input string) string {
+	sanitized := strings.ReplaceAll(input, "\n", "")
+	sanitized = strings.ReplaceAll(sanitized, "\r", "")
+	return sanitized
+}
+
 // validateSkillID validates that a skill ID is safe for filesystem operations
 // and doesn't contain path traversal characters
 func validateSkillID(skillID string) error {
@@ -179,7 +186,7 @@ func (sm *SkillManager) LoadSkill(ctx context.Context, skillPath string) error {
 	// Load or create skill configuration
 	config, err := sm.loadSkillConfig(manifest.ID)
 	if err != nil {
-		logging.Sugar.Warnw("Failed to load skill config, using defaults", "skill", manifest.ID, "error", err)
+		logging.Sugar.Warnw("Failed to load skill config, using defaults", "skill", sanitizeLogInput(manifest.ID), "error", err)
 		config = &SkillConfig{
 			SkillID:     manifest.ID,
 			Name:        manifest.Name,
@@ -215,9 +222,9 @@ func (sm *SkillManager) LoadSkill(ctx context.Context, skillPath string) error {
 	sm.skills[manifest.ID] = loadedSkill
 
 	logging.Sugar.Infow("Skill loaded successfully",
-		"skill_id", manifest.ID,
-		"name", manifest.Name,
-		"version", manifest.Version)
+		"skill_id", sanitizeLogInput(manifest.ID),
+		"name", sanitizeLogInput(manifest.Name),
+		"version", sanitizeLogInput(manifest.Version))
 
 	return nil
 }
@@ -242,17 +249,17 @@ func (sm *SkillManager) unloadSkillUnsafe(ctx context.Context, skillID string) e
 
 	// Teardown the skill
 	if err := loadedSkill.Plugin.Teardown(ctx); err != nil {
-		logging.Sugar.Warnw("Skill teardown failed", "skill", skillID, "error", err)
+		logging.Sugar.Warnw("Skill teardown failed", "skill", sanitizeLogInput(skillID), "error", err)
 	}
 
 	// Unload from loader
 	if err := sm.loader.UnloadSkill(ctx, loadedSkill.Plugin); err != nil {
-		logging.Sugar.Warnw("Failed to unload skill from loader", "skill", skillID, "error", err)
+		logging.Sugar.Warnw("Failed to unload skill from loader", "skill", sanitizeLogInput(skillID), "error", err)
 	}
 
 	delete(sm.skills, skillID)
 
-	logging.Sugar.Infow("Skill unloaded", "skill_id", skillID)
+	logging.Sugar.Infow("Skill unloaded", "skill_id", sanitizeLogInput(skillID))
 	return nil
 }
 
@@ -398,7 +405,7 @@ func (sm *SkillManager) updateSkillEnabled(ctx context.Context, skillID string, 
 
 	// Save configuration
 	if err := sm.saveSkillConfig(skillID, loadedSkill.Info.Config); err != nil {
-		logging.Sugar.Warnw("Failed to save skill config", "skill", skillID, "error", err)
+		logging.Sugar.Warnw("Failed to save skill config", "skill", sanitizeLogInput(skillID), "error", err)
 	}
 
 	return nil

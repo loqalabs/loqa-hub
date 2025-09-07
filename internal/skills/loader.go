@@ -148,7 +148,7 @@ func (l *DefaultSkillLoader) loadGoPlugin(ctx context.Context, skillPath string,
 
 	// Create the skill instance
 	skill := newSkillFunc()
-	logging.Sugar.Infow("Loaded Go plugin skill", "skill", manifest.ID, "path", pluginPath)
+	logging.Sugar.Infow("Loaded Go plugin skill", "skill", sanitizeLogInput(manifest.ID), "path", pluginPath)
 
 	return skill, nil
 }
@@ -182,7 +182,7 @@ func (l *DefaultSkillLoader) loadProcessPlugin(ctx context.Context, skillPath st
 		skillPath: skillPath,
 	}
 
-	logging.Sugar.Infow("Loaded process plugin skill", "skill", manifest.ID, "path", execPath)
+	logging.Sugar.Infow("Loaded process plugin skill", "skill", sanitizeLogInput(manifest.ID), "path", execPath)
 	return processSkill, nil
 }
 
