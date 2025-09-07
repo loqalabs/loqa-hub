@@ -56,8 +56,11 @@ install-tools: ## Install development tools
 # Pre-commit checks (run before committing)
 pre-commit: fmt vet test lint-fast ## Run all pre-commit checks
 
+# Quality validation without auto-formatting (catches all issues)
+quality-check-strict: vet test lint ## Run comprehensive quality checks without auto-formatting
+
 # Complete quality validation (run before pushing)
-quality-check: fmt vet test lint ## Run comprehensive quality checks
+quality-check: quality-check-strict fmt ## Run quality checks, then auto-fix formatting
 
 # Help
 help: ## Show this help message
