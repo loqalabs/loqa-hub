@@ -116,7 +116,7 @@ func NewSkillManager(config SkillManagerConfig, loader SkillLoader) *SkillManage
 
 // Start initializes the skill manager and loads skills
 func (sm *SkillManager) Start(ctx context.Context) error {
-	logging.Sugar.Infow("Starting skill manager", "skills_dir", sm.config.SkillsDir)
+	logging.Sugar.Infow("Starting skill manager", "skills_dir", sanitizeLogInput(sm.config.SkillsDir))
 
 	if sm.config.AutoLoad {
 		if err := sm.loadAllSkills(ctx); err != nil {
@@ -427,7 +427,7 @@ func (sm *SkillManager) loadAllSkills(ctx context.Context) error {
 			manifestPath := filepath.Join(path, "skill.json")
 			if _, err := os.Stat(manifestPath); err == nil {
 				if loadErr := sm.LoadSkill(ctx, path); loadErr != nil {
-					logging.Sugar.Warnw("Failed to load skill", "path", path, "error", loadErr)
+					logging.Sugar.Warnw("Failed to load skill", "path", sanitizeLogInput(path), "error", loadErr)
 				}
 			}
 			return filepath.SkipDir // Don't recurse into subdirectories

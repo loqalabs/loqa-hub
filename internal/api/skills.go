@@ -27,6 +27,13 @@ import (
 	"github.com/loqalabs/loqa-hub/internal/skills"
 )
 
+// sanitizeLogInput removes newline characters to prevent log injection
+func sanitizeLogInput(input string) string {
+	sanitized := strings.ReplaceAll(input, "\n", "")
+	sanitized = strings.ReplaceAll(sanitized, "\r", "")
+	return sanitized
+}
+
 // SkillsHandler handles HTTP requests for skill management
 type SkillsHandler struct {
 	skillManager *skills.SkillManager
@@ -116,7 +123,7 @@ func (h *SkillsHandler) getSkill(w http.ResponseWriter, r *http.Request, skillID
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
-		logging.Sugar.Errorw("Failed to get skill", "skill", skillID, "error", err)
+		logging.Sugar.Errorw("Failed to get skill", "skill", sanitizeLogInput(skillID), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to get skill")
 		return
 	}
@@ -145,7 +152,7 @@ func (h *SkillsHandler) loadSkill(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "skill already loaded")
 			return
 		}
-		logging.Sugar.Errorw("Failed to load skill", "path", request.SkillPath, "error", err)
+		logging.Sugar.Errorw("Failed to load skill", "path", sanitizeLogInput(request.SkillPath), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to load skill: "+err.Error())
 		return
 	}
@@ -163,7 +170,7 @@ func (h *SkillsHandler) unloadSkill(w http.ResponseWriter, r *http.Request, skil
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
-		logging.Sugar.Errorw("Failed to unload skill", "skill", skillID, "error", err)
+		logging.Sugar.Errorw("Failed to unload skill", "skill", sanitizeLogInput(skillID), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to unload skill")
 		return
 	}
@@ -181,7 +188,7 @@ func (h *SkillsHandler) enableSkill(w http.ResponseWriter, r *http.Request, skil
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
-		logging.Sugar.Errorw("Failed to enable skill", "skill", skillID, "error", err)
+		logging.Sugar.Errorw("Failed to enable skill", "skill", sanitizeLogInput(skillID), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to enable skill")
 		return
 	}
@@ -199,7 +206,7 @@ func (h *SkillsHandler) disableSkill(w http.ResponseWriter, r *http.Request, ski
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
-		logging.Sugar.Errorw("Failed to disable skill", "skill", skillID, "error", err)
+		logging.Sugar.Errorw("Failed to disable skill", "skill", sanitizeLogInput(skillID), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to disable skill")
 		return
 	}
@@ -219,21 +226,21 @@ func (h *SkillsHandler) reloadSkill(w http.ResponseWriter, r *http.Request, skil
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
-		logging.Sugar.Errorw("Failed to get skill for reload", "skill", skillID, "error", err)
+		logging.Sugar.Errorw("Failed to get skill for reload", "skill", sanitizeLogInput(skillID), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to get skill")
 		return
 	}
 
 	// Unload the skill
 	if err := h.skillManager.UnloadSkill(r.Context(), skillID); err != nil {
-		logging.Sugar.Errorw("Failed to unload skill during reload", "skill", skillID, "error", err)
+		logging.Sugar.Errorw("Failed to unload skill during reload", "skill", sanitizeLogInput(skillID), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to unload skill")
 		return
 	}
 
 	// Reload the skill
 	if err := h.skillManager.LoadSkill(r.Context(), skillInfo.PluginPath); err != nil {
-		logging.Sugar.Errorw("Failed to reload skill", "skill", skillID, "path", skillInfo.PluginPath, "error", err)
+		logging.Sugar.Errorw("Failed to reload skill", "skill", sanitizeLogInput(skillID), "path", sanitizeLogInput(skillInfo.PluginPath), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to reload skill: "+err.Error())
 		return
 	}
@@ -262,7 +269,7 @@ func (h *SkillsHandler) updateSkill(w http.ResponseWriter, r *http.Request, skil
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
-		logging.Sugar.Errorw("Failed to get skill for update", "skill", skillID, "error", err)
+		logging.Sugar.Errorw("Failed to get skill for update", "skill", sanitizeLogInput(skillID), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to get skill")
 		return
 	}
