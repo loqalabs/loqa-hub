@@ -524,7 +524,7 @@ func (sm *SkillManager) saveSkillConfig(skillID string, config *SkillConfig) err
 	}
 
 	// Ensure config directory exists
-	if err := os.MkdirAll(sm.config.ConfigStore, 0755); err != nil {
+	if err := os.MkdirAll(sm.config.ConfigStore, 0750); err != nil {
 		return err
 	}
 
@@ -534,5 +534,5 @@ func (sm *SkillManager) saveSkillConfig(skillID string, config *SkillConfig) err
 		return err
 	}
 
-	return os.WriteFile(configPath, data, 0644)
+	return os.WriteFile(configPath, data, 0600)
 }

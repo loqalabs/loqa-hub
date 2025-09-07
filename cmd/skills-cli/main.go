@@ -223,7 +223,9 @@ func (c *SkillCLI) listSkills() error {
 		)
 	}
 
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		return fmt.Errorf("error flushing output: %w", err)
+	}
 	fmt.Printf("\nTotal: %d skills\n", result.Count)
 	return nil
 }

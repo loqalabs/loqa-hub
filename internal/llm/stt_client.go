@@ -9,13 +9,14 @@ package llm
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"time"
-	"unsafe"
 
 	"github.com/loqalabs/loqa-hub/internal/logging"
 )
@@ -183,8 +184,10 @@ func (s *STTClient) float32ToWAV(samples []float32, sampleRate int) ([]byte, err
 
 	// Audio data (float32 samples as little-endian bytes)
 	for _, sample := range samples {
-		bits := *(*uint32)(unsafe.Pointer(&sample))
-		buf.Write([]byte{byte(bits), byte(bits >> 8), byte(bits >> 16), byte(bits >> 24)})
+		bits := math.Float32bits(sample)
+		binaryData := make([]byte, 4)
+		binary.LittleEndian.PutUint32(binaryData, bits)
+		buf.Write(binaryData)
 	}
 
 	return buf.Bytes(), nil

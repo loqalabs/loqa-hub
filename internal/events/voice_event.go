@@ -21,12 +21,13 @@ package events
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"time"
-	"unsafe"
 )
 
 // VoiceEvent represents a complete voice interaction event with full traceability
@@ -121,9 +122,10 @@ func (ve *VoiceEvent) SetError(err error) {
 func (ve *VoiceEvent) calculateAudioHash(audioData []float32) string {
 	hasher := sha256.New()
 
-	// Convert float32 slice to bytes for hashing
+	// Convert float32 slice to bytes for hashing using safe binary encoding
 	for _, sample := range audioData {
-		bytes := (*[4]byte)(unsafe.Pointer(&sample))[:]
+		bytes := make([]byte, 4)
+		binary.LittleEndian.PutUint32(bytes, math.Float32bits(sample))
 		hasher.Write(bytes)
 	}
 

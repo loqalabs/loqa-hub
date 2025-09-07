@@ -96,7 +96,7 @@ func ensureDir(dir string) error {
 	if dir == "" || dir == "." {
 		return nil
 	}
-	return os.MkdirAll(dir, 0755)
+	return os.MkdirAll(dir, 0750)
 }
 
 // configureSQLite sets optimal SQLite settings for our use case
