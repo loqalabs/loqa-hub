@@ -153,6 +153,16 @@ func (sm *SkillManager) LoadSkill(ctx context.Context, skillPath string) error {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
+	// Validate skill path to prevent path traversal attacks
+	if skillPath == "" {
+		return fmt.Errorf("skill path cannot be empty")
+	}
+	
+	// Additional path validation - ensure no path traversal attempts
+	if strings.Contains(skillPath, "..") || strings.Contains(skillPath, "\\") {
+		return fmt.Errorf("invalid skill path: path traversal detected")
+	}
+
 	// Load the manifest first to get skill ID
 	manifest, err := sm.loadManifest(skillPath)
 	if err != nil {
@@ -303,7 +313,7 @@ func (sm *SkillManager) HandleIntent(ctx context.Context, intent *VoiceIntent) (
 			candidate.mutex.Unlock()
 
 			logging.Sugar.Warnw("Skill execution failed",
-				"skill", candidate.Info.Manifest.ID,
+				"skill", sanitizeLogInput(candidate.Info.Manifest.ID),
 				"error", err)
 			continue
 		}

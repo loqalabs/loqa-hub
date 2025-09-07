@@ -34,6 +34,31 @@ func sanitizeLogInput(input string) string {
 	return sanitized
 }
 
+// isValidAction validates that the action is one of the allowed values
+func isValidAction(action string) bool {
+	validActions := map[string]bool{
+		"enable":  true,
+		"disable": true,
+		"reload":  true,
+	}
+	return validActions[action]
+}
+
+// validateSkillID validates skill ID format (same as skills package)
+func validateSkillID(skillID string) error {
+	if skillID == "" {
+		return skills.ErrInvalidSkillID
+	}
+	// Only allow alphanumeric characters, hyphens, and underscores
+	for _, r := range skillID {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || 
+			 (r >= '0' && r <= '9') || r == '-' || r == '_') {
+			return skills.ErrInvalidSkillID
+		}
+	}
+	return nil
+}
+
 // SkillsHandler handles HTTP requests for skill management
 type SkillsHandler struct {
 	skillManager *skills.SkillManager
@@ -66,6 +91,12 @@ func (h *SkillsHandler) HandleSkillByID(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Validate skillID to prevent path traversal and injection attacks
+	if err := validateSkillID(skillID); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid skill ID")
+		return
+	}
+
 	switch r.Method {
 	case http.MethodGet:
 		h.getSkill(w, r, skillID)
@@ -91,6 +122,18 @@ func (h *SkillsHandler) HandleSkillAction(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Validate skillID to prevent path traversal and injection attacks
+	if err := validateSkillID(skillID); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid skill ID")
+		return
+	}
+
+	// Validate action parameter
+	if !isValidAction(action) {
+		writeError(w, http.StatusBadRequest, "invalid action")
+		return
+	}
+
 	switch action {
 	case "enable":
 		h.enableSkill(w, r, skillID)
@@ -99,7 +142,7 @@ func (h *SkillsHandler) HandleSkillAction(w http.ResponseWriter, r *http.Request
 	case "reload":
 		h.reloadSkill(w, r, skillID)
 	default:
-		writeError(w, http.StatusBadRequest, "unknown action: "+action)
+		writeError(w, http.StatusBadRequest, "unknown action: "+sanitizeLogInput(action))
 	}
 }
 
