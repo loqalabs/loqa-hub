@@ -54,7 +54,7 @@
     "service_role": "Central hub service - orchestrates communication between all microservices",
     "service_type": "Core backend service (Go)",
     "dependencies": ["loqa-proto", "loqa-skills"],
-    "connected_services": ["loqa-relay", "loqa-commander", "loqa-device-service"],
+    "connected_services": ["loqa-relay", "loqa-commander"],
     "microservice_architecture": {
       "structure": "Part of loqalabs/ microservice ecosystem - each subfolder is an independent git repository",
       "peer_services_location": "../ (one folder up from current repo)",
