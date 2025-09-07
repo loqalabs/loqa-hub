@@ -89,6 +89,37 @@ See [`API.md`](API.md) for complete endpoint documentation with examples.
 
 See the main [Loqa documentation](https://github.com/loqalabs/loqa) for setup and usage instructions.
 
+## Development
+
+### Local Development Setup
+
+```bash
+# Build the project
+make build
+
+# Run tests
+make test
+
+# Run linting (catches CI errors locally)
+make lint-fast
+
+# Run all pre-commit checks
+make pre-commit
+
+# Install development tools
+make install-tools
+```
+
+### Pre-commit Workflow
+
+Before pushing code, run the pre-commit checks to catch CI errors early:
+
+```bash
+make pre-commit
+```
+
+This will run formatting, linting, and tests - the same checks that run in CI.
+
 ## License
 
 Licensed under the GNU Affero General Public License v3.0. See [LICENSE](LICENSE) for details.
