@@ -249,16 +249,9 @@ func (s *VoiceEventsStore) buildListQuery(options ListOptions) (string, []interf
 		args = append(args, options.EndTime)
 	}
 
-	// Apply sorting
-	sortBy := options.SortBy
-	if sortBy == "" {
-		sortBy = "timestamp"
-	}
-
-	sortOrder := options.SortOrder
-	if sortOrder == "" {
-		sortOrder = "DESC"
-	}
+	// Apply sorting with validation to prevent SQL injection
+	sortBy := validateSortBy(options.SortBy)
+	sortOrder := validateSortOrder(options.SortOrder)
 
 	query += fmt.Sprintf(" ORDER BY %s %s", sortBy, sortOrder)
 
@@ -314,4 +307,35 @@ func (s *VoiceEventsStore) scanVoiceEvent(scanner interface{}) (*events.VoiceEve
 	}
 
 	return &event, nil
+}
+
+// validateSortBy ensures only safe column names are used for sorting
+func validateSortBy(sortBy string) string {
+	validColumns := map[string]bool{
+		"timestamp":        true,
+		"confidence":       true,
+		"processing_time":  true,
+		"processing_time_ms": true,
+		"uuid":            true,
+		"relay_id":        true,
+		"intent":          true,
+		"success":         true,
+		"audio_duration":  true,
+		"sample_rate":     true,
+	}
+
+	if sortBy != "" && validColumns[sortBy] {
+		return sortBy
+	}
+	return "timestamp" // safe default
+}
+
+// validateSortOrder ensures only ASC or DESC are used
+func validateSortOrder(sortOrder string) string {
+	switch sortOrder {
+	case "ASC", "DESC":
+		return sortOrder
+	default:
+		return "DESC" // safe default
+	}
 }
