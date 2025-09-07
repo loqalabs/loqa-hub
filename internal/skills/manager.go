@@ -56,6 +56,35 @@ func sanitizeLogInput(input string) string {
 	return sanitized
 }
 
+// safeConfigPath constructs a safe config file path within the config store
+func (sm *SkillManager) safeConfigPath(skillID string) (string, error) {
+	// Validate skill ID first
+	if err := validateSkillID(skillID); err != nil {
+		return "", fmt.Errorf("invalid skill ID: %w", err)
+	}
+	
+	// Construct base path
+	configPath := filepath.Join(sm.config.ConfigStore, skillID+".json")
+	
+	// Validate that the resolved path is within the expected directory
+	absConfigPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve config path: %w", err)
+	}
+	
+	absConfigStore, err := filepath.Abs(sm.config.ConfigStore)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve config store path: %w", err)
+	}
+	
+	// Ensure the config file path is within the config store directory
+	if !strings.HasPrefix(absConfigPath, absConfigStore+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid config path: path traversal detected")
+	}
+	
+	return configPath, nil
+}
+
 // validateSkillID validates that a skill ID is safe for filesystem operations
 // and doesn't contain path traversal characters
 func validateSkillID(skillID string) error {
@@ -507,27 +536,10 @@ func (sm *SkillManager) validateSkill(manifest *SkillManifest) error {
 
 // loadSkillConfig loads configuration for a skill
 func (sm *SkillManager) loadSkillConfig(skillID string) (*SkillConfig, error) {
-	if err := validateSkillID(skillID); err != nil {
-		return nil, fmt.Errorf("invalid skill ID: %w", err)
-	}
-
-	// Safely construct config path with additional validation
-	configPath := filepath.Join(sm.config.ConfigStore, skillID+".json")
-	
-	// Validate that the resolved path is within the expected directory
-	absConfigPath, err := filepath.Abs(configPath)
+	// Get safe config path
+	configPath, err := sm.safeConfigPath(skillID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve config path: %w", err)
-	}
-	
-	absConfigStore, err := filepath.Abs(sm.config.ConfigStore)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve config store path: %w", err)
-	}
-	
-	// Ensure the config file path is within the config store directory
-	if !strings.HasPrefix(absConfigPath, absConfigStore+string(filepath.Separator)) {
-		return nil, fmt.Errorf("invalid config path: path traversal detected")
+		return nil, err
 	}
 	
 	data, err := os.ReadFile(configPath)
@@ -542,10 +554,6 @@ func (sm *SkillManager) loadSkillConfig(skillID string) (*SkillConfig, error) {
 
 // saveSkillConfig saves configuration for a skill
 func (sm *SkillManager) saveSkillConfig(skillID string, config *SkillConfig) error {
-	if err := validateSkillID(skillID); err != nil {
-		return fmt.Errorf("invalid skill ID: %w", err)
-	}
-
 	if sm.config.ConfigStore == "" {
 		return nil
 	}
@@ -555,23 +563,10 @@ func (sm *SkillManager) saveSkillConfig(skillID string, config *SkillConfig) err
 		return err
 	}
 
-	// Safely construct config path with additional validation
-	configPath := filepath.Join(sm.config.ConfigStore, skillID+".json")
-	
-	// Validate that the resolved path is within the expected directory
-	absConfigPath, err := filepath.Abs(configPath)
+	// Get safe config path
+	configPath, err := sm.safeConfigPath(skillID)
 	if err != nil {
-		return fmt.Errorf("failed to resolve config path: %w", err)
-	}
-	
-	absConfigStore, err := filepath.Abs(sm.config.ConfigStore)
-	if err != nil {
-		return fmt.Errorf("failed to resolve config store path: %w", err)
-	}
-	
-	// Ensure the config file path is within the config store directory
-	if !strings.HasPrefix(absConfigPath, absConfigStore+string(filepath.Separator)) {
-		return fmt.Errorf("invalid config path: path traversal detected")
+		return err
 	}
 	
 	data, err := json.MarshalIndent(config, "", "  ")
