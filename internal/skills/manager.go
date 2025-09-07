@@ -45,24 +45,16 @@ var (
 	ErrInvalidSkillID     = errors.New("invalid skill ID")
 )
 
+// validateSkillID ensures that the skill ID contains only safe characters.
+// Only allows alphanumeric ASCII characters, dashes, and underscores.
+var validSkillID = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
 // validateSkillID validates that a skill ID is safe for filesystem operations
 // and doesn't contain path traversal characters
 func validateSkillID(skillID string) error {
-	if skillID == "" {
-		return ErrInvalidSkillID
-	}
-
-	// Check for path traversal attempts
-	if strings.Contains(skillID, "..") || strings.Contains(skillID, "/") || strings.Contains(skillID, "\\") {
-		return ErrInvalidSkillID
-	}
-
-	// Only allow alphanumeric characters, hyphens, and underscores
-	validSkillID := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 	if !validSkillID.MatchString(skillID) {
 		return ErrInvalidSkillID
 	}
-
 	return nil
 }
 
