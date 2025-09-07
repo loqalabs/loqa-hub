@@ -77,7 +77,7 @@ func NewDatabase(config DatabaseConfig) (*Database, error) {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
-	log.Printf("✅ Database connected: %s", config.Path)
+	log.Printf("✅ Database connected: %s", sanitizeLogInput(config.Path))
 	return database, nil
 }
 
@@ -145,7 +145,7 @@ func (d *Database) DB() *sql.DB {
 // Close closes the database connection
 func (d *Database) Close() error {
 	if d.db != nil {
-		log.Printf("🔌 Closing database connection: %s", d.path)
+		log.Printf("🔌 Closing database connection: %s", sanitizeLogInput(d.path))
 		return d.db.Close()
 	}
 	return nil
