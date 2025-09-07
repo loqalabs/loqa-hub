@@ -38,10 +38,6 @@ cd ../../hub
 go mod tidy
 go build -o ../bin/loqa-hub ./cmd
 
-# Build device service
-echo "🔧 Building device service..."
-go build -o ../bin/device-service ./cmd/device-service
-
 # Build test relay (if needed for testing)
 echo "🎤 Building test relay..."
 cd ../relay/test-go

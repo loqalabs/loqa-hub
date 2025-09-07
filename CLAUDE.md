@@ -17,7 +17,7 @@ Loqa Hub is the core backend service that handles:
 
 - **Service Type**: Core backend service (Go)
 - **Dependencies**: loqa-proto (gRPC definitions), loqa-skills (plugin system)
-- **Communicates With**: loqa-relay (audio input), loqa-commander (web UI), loqa-device-service (commands)
+- **Communicates With**: loqa-relay (audio input), loqa-commander (web UI), skills (commands)
 - **Ports**: `:3000` (HTTP API), `:50051` (gRPC server)
 
 ## Development Commands
