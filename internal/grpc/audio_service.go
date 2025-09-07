@@ -65,10 +65,10 @@ func NewAudioServiceWithTTS(sttURL string, ttsConfig config.TTSConfig, eventsSto
 	// Initialize TTS client
 	var ttsClient llm.TextToSpeech
 	if ttsConfig.URL != "" {
-		ttsClient, err = llm.NewKokoroClient(ttsConfig)
+		ttsClient, err = llm.NewOpenAITTSClient(ttsConfig)
 		if err != nil {
 			if ttsConfig.FallbackEnabled {
-				logging.LogWarn("Failed to initialize Kokoro TTS, continuing without TTS",
+				logging.LogWarn("Failed to initialize TTS, continuing without TTS",
 					zap.Error(err),
 					zap.String("tts_url", ttsConfig.URL),
 				)

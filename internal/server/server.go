@@ -77,7 +77,7 @@ func New(cfg Config) *Server {
 	var audioService *grpcservice.AudioService
 
 	log.Printf("🎙️  Using STT service at: %s", cfg.STTURL)
-	log.Printf("🔊 Using Kokoro TTS service at: %s", cfg.TTSConfig.URL)
+	log.Printf("🔊 Using TTS service at: %s", cfg.TTSConfig.URL)
 	audioService, err = grpcservice.NewAudioServiceWithTTS(cfg.STTURL, cfg.TTSConfig, eventsStore)
 
 	if err != nil {

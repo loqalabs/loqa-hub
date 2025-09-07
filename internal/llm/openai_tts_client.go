@@ -34,23 +34,23 @@ import (
 	"go.uber.org/zap"
 )
 
-// KokoroRequest represents a request to the Kokoro TTS API
-type KokoroRequest struct {
+// OpenAITTSRequest represents a request to an OpenAI-compatible TTS API
+type OpenAITTSRequest struct {
 	Model   string                 `json:"model"`
 	Input   string                 `json:"input"`
 	Voice   string                 `json:"voice"`
 	Format  string                 `json:"response_format"`
 	Speed   float32                `json:"speed,omitempty"`
-	Options map[string]interface{} `json:"normalization_options,omitempty"`
+	Options map[string]any `json:"normalization_options,omitempty"`
 }
 
-// KokoroVoicesResponse represents the response from the voices endpoint
-type KokoroVoicesResponse struct {
+// OpenAITTSVoicesResponse represents the response from the voices endpoint
+type OpenAITTSVoicesResponse struct {
 	Voices []string `json:"voices"`
 }
 
-// KokoroClient implements TextToSpeech interface for Kokoro-82M TTS
-type KokoroClient struct {
+// OpenAITTSClient implements TextToSpeech interface for OpenAI-compatible TTS services
+type OpenAITTSClient struct {
 	baseURL         string
 	client          *http.Client
 	config          config.TTSConfig
@@ -60,10 +60,10 @@ type KokoroClient struct {
 	voicesCacheTime time.Time
 }
 
-// NewKokoroClient creates a new Kokoro TTS client
-func NewKokoroClient(cfg config.TTSConfig) (*KokoroClient, error) {
+// NewOpenAITTSClient creates a new OpenAI-compatible TTS client
+func NewOpenAITTSClient(cfg config.TTSConfig) (*OpenAITTSClient, error) {
 	if cfg.URL == "" {
-		return nil, fmt.Errorf("kokoro TTS URL cannot be empty")
+		return nil, fmt.Errorf("TTS URL cannot be empty")
 	}
 
 	client := &http.Client{
@@ -73,7 +73,7 @@ func NewKokoroClient(cfg config.TTSConfig) (*KokoroClient, error) {
 	// Create semaphore to limit concurrent requests
 	semaphore := make(chan struct{}, cfg.MaxConcurrent)
 
-	kokoroClient := &KokoroClient{
+	ttsClient := &OpenAITTSClient{
 		baseURL:   strings.TrimSuffix(cfg.URL, "/"),
 		client:    client,
 		config:    cfg,
@@ -81,31 +81,31 @@ func NewKokoroClient(cfg config.TTSConfig) (*KokoroClient, error) {
 	}
 
 	// Test connection
-	if err := kokoroClient.testConnection(); err != nil {
-		return nil, fmt.Errorf("failed to connect to Kokoro TTS service: %w", err)
+	if err := ttsClient.testConnection(); err != nil {
+		return nil, fmt.Errorf("failed to connect to TTS service: %w", err)
 	}
 
 	if logging.Sugar != nil {
-		logging.Sugar.Infow("🔊 Kokoro TTS client initialized",
+		logging.Sugar.Infow("🔊 TTS client initialized",
 			"url", cfg.URL,
 			"voice", cfg.Voice,
 			"max_concurrent", cfg.MaxConcurrent,
 		)
 	}
 
-	return kokoroClient, nil
+	return ttsClient, nil
 }
 
-// Synthesize converts text to speech using Kokoro-82M
-func (k *KokoroClient) Synthesize(text string, options *TTSOptions) (*TTSResult, error) {
+// Synthesize converts text to speech using OpenAI-compatible TTS
+func (c *OpenAITTSClient) Synthesize(text string, options *TTSOptions) (*TTSResult, error) {
 	if text == "" {
 		return nil, fmt.Errorf("text cannot be empty")
 	}
 
 	// Acquire semaphore slot for concurrency control
 	select {
-	case k.semaphore <- struct{}{}:
-		defer func() { <-k.semaphore }()
+	case c.semaphore <- struct{}{}:
+		defer func() { <-c.semaphore }()
 	case <-time.After(5 * time.Second):
 		return nil, fmt.Errorf("TTS synthesis queue full, request timed out")
 	}
@@ -113,10 +113,10 @@ func (k *KokoroClient) Synthesize(text string, options *TTSOptions) (*TTSResult,
 	startTime := time.Now()
 
 	// Prepare request options
-	voice := k.config.Voice
-	speed := k.config.Speed
-	format := k.config.ResponseFormat
-	normalize := k.config.Normalize
+	voice := c.config.Voice
+	speed := c.config.Speed
+	format := c.config.ResponseFormat
+	normalize := c.config.Normalize
 
 	if options != nil {
 		if options.Voice != "" {
@@ -132,8 +132,8 @@ func (k *KokoroClient) Synthesize(text string, options *TTSOptions) (*TTSResult,
 	}
 
 	// Build request payload
-	request := KokoroRequest{
-		Model:  "kokoro",
+	request := OpenAITTSRequest{
+		Model:  "tts-1",
 		Input:  text,
 		Voice:  voice,
 		Format: format,
@@ -142,7 +142,7 @@ func (k *KokoroClient) Synthesize(text string, options *TTSOptions) (*TTSResult,
 
 	// Add normalization options if needed
 	if !normalize {
-		request.Options = map[string]interface{}{
+		request.Options = map[string]any{
 			"normalize": false,
 		}
 	}
@@ -163,10 +163,10 @@ func (k *KokoroClient) Synthesize(text string, options *TTSOptions) (*TTSResult,
 	}
 
 	// Make HTTP request
-	ctx, cancel := context.WithTimeout(context.Background(), k.config.Timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), c.config.Timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", k.baseURL+"/audio/speech", bytes.NewBuffer(requestBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/audio/speech", bytes.NewBuffer(requestBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
@@ -174,10 +174,10 @@ func (k *KokoroClient) Synthesize(text string, options *TTSOptions) (*TTSResult,
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "audio/*")
 
-	resp, err := k.client.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		if logging.Logger != nil {
-			logging.LogError(err, "Kokoro TTS HTTP request failed",
+			logging.LogError(err, "TTS HTTP request failed",
 				zap.String("voice", voice),
 				zap.Int("text_length", len(text)),
 			)
@@ -189,7 +189,7 @@ func (k *KokoroClient) Synthesize(text string, options *TTSOptions) (*TTSResult,
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if logging.Logger != nil {
-			logging.LogWarn("Kokoro TTS request failed",
+			logging.LogWarn("TTS request failed",
 				zap.Int("status_code", resp.StatusCode),
 				zap.String("response_body", string(body)),
 			)
@@ -217,29 +217,29 @@ func (k *KokoroClient) Synthesize(text string, options *TTSOptions) (*TTSResult,
 }
 
 // GetAvailableVoices returns the list of available voices
-func (k *KokoroClient) GetAvailableVoices() ([]string, error) {
-	k.mu.RLock()
+func (c *OpenAITTSClient) GetAvailableVoices() ([]string, error) {
+	c.mu.RLock()
 	// Return cached voices if they're fresh (cache for 1 hour)
-	if len(k.cachedVoices) > 0 && time.Since(k.voicesCacheTime) < time.Hour {
-		voices := make([]string, len(k.cachedVoices))
-		copy(voices, k.cachedVoices)
-		k.mu.RUnlock()
+	if len(c.cachedVoices) > 0 && time.Since(c.voicesCacheTime) < time.Hour {
+		voices := make([]string, len(c.cachedVoices))
+		copy(voices, c.cachedVoices)
+		c.mu.RUnlock()
 		return voices, nil
 	}
-	k.mu.RUnlock()
+	c.mu.RUnlock()
 
 	// Fetch voices from API
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", k.baseURL+"/audio/voices", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/audio/voices", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create voices request: %w", err)
 	}
 
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := k.client.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch voices: %w", err)
 	}
@@ -249,17 +249,17 @@ func (k *KokoroClient) GetAvailableVoices() ([]string, error) {
 		return nil, fmt.Errorf("voices request failed with status %d", resp.StatusCode)
 	}
 
-	var voicesResponse KokoroVoicesResponse
+	var voicesResponse OpenAITTSVoicesResponse
 	if err := json.NewDecoder(resp.Body).Decode(&voicesResponse); err != nil {
 		return nil, fmt.Errorf("failed to decode voices response: %w", err)
 	}
 
 	// Update cache
-	k.mu.Lock()
-	k.cachedVoices = make([]string, len(voicesResponse.Voices))
-	copy(k.cachedVoices, voicesResponse.Voices)
-	k.voicesCacheTime = time.Now()
-	k.mu.Unlock()
+	c.mu.Lock()
+	c.cachedVoices = make([]string, len(voicesResponse.Voices))
+	copy(c.cachedVoices, voicesResponse.Voices)
+	c.voicesCacheTime = time.Now()
+	c.mu.Unlock()
 
 	if logging.Sugar != nil {
 		logging.Sugar.Debugw("🔊 Retrieved available voices",
@@ -272,22 +272,22 @@ func (k *KokoroClient) GetAvailableVoices() ([]string, error) {
 }
 
 // Close cleans up resources
-func (k *KokoroClient) Close() error {
-	k.client.CloseIdleConnections()
+func (c *OpenAITTSClient) Close() error {
+	c.client.CloseIdleConnections()
 	return nil
 }
 
-// testConnection tests the connection to the Kokoro TTS service
-func (k *KokoroClient) testConnection() error {
+// testConnection tests the connection to the TTS service
+func (c *OpenAITTSClient) testConnection() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", k.baseURL+"/audio/voices", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/audio/voices", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create test request: %w", err)
 	}
 
-	resp, err := k.client.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("connection test failed: %w", err)
 	}

@@ -46,14 +46,14 @@ func main() {
 
 	// Load TTS configuration
 	ttsConfig := config.TTSConfig{
-		URL:             getEnv("KOKORO_TTS_URL", "http://localhost:8880/v1"),
-		Voice:           getEnv("KOKORO_TTS_VOICE", "af_bella"),
-		Speed:           getEnvFloat32("KOKORO_TTS_SPEED", 1.0),
-		ResponseFormat:  getEnv("KOKORO_TTS_FORMAT", "mp3"),
-		Normalize:       getEnvBool("KOKORO_TTS_NORMALIZE", true),
-		MaxConcurrent:   getEnvInt("KOKORO_TTS_MAX_CONCURRENT", 10),
-		Timeout:         getEnvDuration("KOKORO_TTS_TIMEOUT", 10*time.Second),
-		FallbackEnabled: getEnvBool("KOKORO_TTS_FALLBACK_ENABLED", true),
+		URL:             getEnv("TTS_URL", "http://localhost:8880/v1"),
+		Voice:           getEnv("TTS_VOICE", "af_bella"),
+		Speed:           getEnvFloat32("TTS_SPEED", 1.0),
+		ResponseFormat:  getEnv("TTS_FORMAT", "mp3"),
+		Normalize:       getEnvBool("TTS_NORMALIZE", true),
+		MaxConcurrent:   getEnvInt("TTS_MAX_CONCURRENT", 10),
+		Timeout:         getEnvDuration("TTS_TIMEOUT", 10*time.Second),
+		FallbackEnabled: getEnvBool("TTS_FALLBACK_ENABLED", true),
 	}
 
 	cfg := server.Config{

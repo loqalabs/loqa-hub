@@ -53,7 +53,7 @@ type STTConfig struct {
 
 // TTSConfig holds Text-to-Speech service configuration
 type TTSConfig struct {
-	URL             string        // REST API URL for Kokoro-82M TTS service
+	URL             string        // REST API URL for OpenAI-compatible TTS service
 	Voice           string        // Default voice to use (e.g., "af_bella")
 	Speed           float32       // Speech speed (1.0 = normal)
 	ResponseFormat  string        // Audio format (mp3, wav, opus, flac)
@@ -94,14 +94,14 @@ func Load() (*Config, error) {
 			MaxTokens:   getEnvInt("STT_MAX_TOKENS", 224),
 		},
 		TTS: TTSConfig{
-			URL:             getEnvString("KOKORO_TTS_URL", "http://localhost:8880/v1"),
-			Voice:           getEnvString("KOKORO_TTS_VOICE", "af_bella"),
-			Speed:           getEnvFloat32("KOKORO_TTS_SPEED", 1.0),
-			ResponseFormat:  getEnvString("KOKORO_TTS_FORMAT", "mp3"),
-			Normalize:       getEnvBool("KOKORO_TTS_NORMALIZE", true),
-			MaxConcurrent:   getEnvInt("KOKORO_TTS_MAX_CONCURRENT", 10),
-			Timeout:         getEnvDuration("KOKORO_TTS_TIMEOUT", 10*time.Second),
-			FallbackEnabled: getEnvBool("KOKORO_TTS_FALLBACK_ENABLED", true),
+			URL:             getEnvString("TTS_URL", "http://localhost:8880/v1"),
+			Voice:           getEnvString("TTS_VOICE", "af_bella"),
+			Speed:           getEnvFloat32("TTS_SPEED", 1.0),
+			ResponseFormat:  getEnvString("TTS_FORMAT", "mp3"),
+			Normalize:       getEnvBool("TTS_NORMALIZE", true),
+			MaxConcurrent:   getEnvInt("TTS_MAX_CONCURRENT", 10),
+			Timeout:         getEnvDuration("TTS_TIMEOUT", 10*time.Second),
+			FallbackEnabled: getEnvBool("TTS_FALLBACK_ENABLED", true),
 		},
 		Logging: LoggingConfig{
 			Level:  getEnvString("LOG_LEVEL", "info"),

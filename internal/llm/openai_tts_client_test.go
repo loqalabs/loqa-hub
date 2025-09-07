@@ -28,7 +28,7 @@ import (
 	"github.com/loqalabs/loqa-hub/internal/config"
 )
 
-func TestKokoroClient_NewKokoroClient(t *testing.T) {
+func TestOpenAITTSClient_NewOpenAITTSClient(t *testing.T) {
 	// Test server that responds successfully to /audio/voices
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/audio/voices" {
@@ -50,7 +50,7 @@ func TestKokoroClient_NewKokoroClient(t *testing.T) {
 		FallbackEnabled: true,
 	}
 
-	client, err := NewKokoroClient(cfg)
+	client, err := NewOpenAITTSClient(cfg)
 	if err != nil {
 		t.Fatalf("Expected successful client creation, got error: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestKokoroClient_NewKokoroClient(t *testing.T) {
 	client.Close()
 }
 
-func TestKokoroClient_NewKokoroClient_InvalidURL(t *testing.T) {
+func TestOpenAITTSClient_NewOpenAITTSClient_InvalidURL(t *testing.T) {
 	cfg := config.TTSConfig{
 		URL:             "",
 		Voice:           "af_bella",
@@ -92,7 +92,7 @@ func TestKokoroClient_NewKokoroClient_InvalidURL(t *testing.T) {
 		FallbackEnabled: true,
 	}
 
-	_, err := NewKokoroClient(cfg)
+	_, err := NewOpenAITTSClient(cfg)
 	if err == nil {
 		t.Fatal("Expected error for empty URL, got nil")
 	}
@@ -102,7 +102,7 @@ func TestKokoroClient_NewKokoroClient_InvalidURL(t *testing.T) {
 	}
 }
 
-func TestKokoroClient_Synthesize(t *testing.T) {
+func TestOpenAITTSClient_Synthesize(t *testing.T) {
 	// Test server that responds to both voices and synthesis requests
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -131,7 +131,7 @@ func TestKokoroClient_Synthesize(t *testing.T) {
 		FallbackEnabled: true,
 	}
 
-	client, err := NewKokoroClient(cfg)
+	client, err := NewOpenAITTSClient(cfg)
 	if err != nil {
 		t.Fatalf("Expected successful client creation, got error: %v", err)
 	}
@@ -169,10 +169,10 @@ func TestKokoroClient_Synthesize(t *testing.T) {
 	}
 }
 
-func TestKokoroClient_Synthesize_EmptyText(t *testing.T) {
+func TestOpenAITTSClient_Synthesize_EmptyText(t *testing.T) {
 	// We won't actually create a client for this test since we don't want
 	// to make real connections. We'll test the validation directly.
-	client := &KokoroClient{}
+	client := &OpenAITTSClient{}
 
 	_, err := client.Synthesize("", nil)
 	if err == nil {
