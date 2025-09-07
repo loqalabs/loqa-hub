@@ -23,8 +23,7 @@ go.work.sum
 # Dependency directories
 vendor/
 
-# IDE files
-.vscode/
+# IDE files (VSCode configs are shared)
 .idea/
 *.swp
 *.swo
