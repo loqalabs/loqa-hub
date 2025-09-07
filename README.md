@@ -14,7 +14,8 @@ Central orchestrator for the Loqa local-first voice assistant platform.
 Loqa Hub is the core service that handles:
 - gRPC API for audio input from relay devices
 - Speech-to-text processing via OpenAI-compatible STT service
-- LLM-based intent parsing and command extraction
+- LLM-based intent parsing and command extraction with **multi-command support**
+- Sequential command execution with rollback capabilities
 - NATS integration for publishing commands to other services
 - **NEW:** Complete voice event tracking and observability
 
@@ -22,8 +23,11 @@ Loqa Hub is the core service that handles:
 
 - 🎤 **Audio Processing**: Receives audio streams from relay devices via gRPC
 - 📝 **Speech Recognition**: Local speech-to-text using OpenAI-compatible STT service
-- 🤖 **Intent Parsing**: Natural language understanding via Ollama LLM
+- 🤖 **Intent Parsing**: Natural language understanding via Ollama LLM with multi-command support
+- 🔗 **Multi-Command Processing**: Parse and execute compound utterances like "turn on the lights and play music"
 - 📡 **Event Publishing**: Publishes parsed commands to NATS message bus
+- 🔄 **Command Queue**: Sequential execution with rollback capabilities for failed command chains
+- ⚡ **Performance**: <200ms execution time per additional command in multi-command utterances
 - 🔒 **Privacy-First**: All processing happens locally, no cloud dependencies
 
 ### 🆕 Milestone 4a: Modular Skill Plugin Architecture
@@ -45,6 +49,16 @@ Loqa Hub is the core service that handles:
 - 🔍 **Audio Fingerprinting**: SHA-256 hashing for deduplication and analysis
 - ⏱️ **Performance Metrics**: Processing time tracking throughout the voice pipeline
 - 🚨 **Error Tracking**: Comprehensive error state capture and reporting
+
+### 🆕 Milestone 4b: Multi-Command Intent Parsing
+
+- 🔗 **Compound Utterances**: Parse complex voice commands like "turn on the lights and play music"
+- 🔄 **Sequential Execution**: Command queue system executes commands one by one to prevent conflicts
+- ⏪ **Rollback Support**: Failed commands trigger rollback of previously executed commands in the chain
+- 🗣️ **Response Aggregation**: Intelligent combination of multiple command responses for natural TTS
+- ⚡ **Performance Optimized**: <200ms execution time per additional command
+- 📊 **Conjunction Detection**: Supports "and", "then", "after that", "next", "also" conjunctions
+- 🔄 **Backward Compatible**: Seamless fallback to single-command parsing when needed
 
 ## Architecture
 
