@@ -21,6 +21,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/loqalabs/loqa-hub/internal/logging"
@@ -44,19 +46,62 @@ func isValidAction(action string) bool {
 	return validActions[action]
 }
 
-// validateSkillID validates skill ID format (same as skills package)
+// validateSkillID validates skill ID format using regex pattern
+var skillIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
 func validateSkillID(skillID string) error {
-	if skillID == "" {
+	if skillID == "" || !skillIDPattern.MatchString(skillID) {
 		return skills.ErrInvalidSkillID
 	}
-	// Only allow alphanumeric characters, hyphens, and underscores
-	for _, r := range skillID {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || 
-			 (r >= '0' && r <= '9') || r == '-' || r == '_') {
-			return skills.ErrInvalidSkillID
-		}
-	}
 	return nil
+}
+
+// safeExtractSkillID safely extracts skill ID from URL path with validation
+func safeExtractSkillID(urlPath string) (string, error) {
+	// Parse URL to ensure it's well-formed
+	u, err := url.Parse(urlPath)
+	if err != nil {
+		return "", err
+	}
+	
+	// Use the cleaned path
+	cleanPath := u.Path
+	
+	// Extract skill ID using the existing logic but on cleaned path
+	skillID := extractSkillID(cleanPath)
+	
+	// Validate extracted skill ID
+	if err := validateSkillID(skillID); err != nil {
+		return "", err
+	}
+	
+	return skillID, nil
+}
+
+// safeExtractSkillIDAndAction safely extracts skill ID and action from URL path
+func safeExtractSkillIDAndAction(urlPath string) (string, string, error) {
+	// Parse URL to ensure it's well-formed
+	u, err := url.Parse(urlPath)
+	if err != nil {
+		return "", "", err
+	}
+	
+	// Use the cleaned path
+	cleanPath := u.Path
+	
+	// Extract skill ID and action using existing logic
+	skillID, action := extractSkillIDAndAction(cleanPath)
+	
+	// Validate extracted values
+	if err := validateSkillID(skillID); err != nil {
+		return "", "", err
+	}
+	
+	if !isValidAction(action) {
+		return "", "", skills.ErrInvalidSkillID // reuse this error for simplicity
+	}
+	
+	return skillID, action, nil
 }
 
 // SkillsHandler handles HTTP requests for skill management
@@ -85,17 +130,14 @@ func (h *SkillsHandler) HandleSkills(w http.ResponseWriter, r *http.Request) {
 
 // HandleSkillByID handles requests to /api/skills/{id}
 func (h *SkillsHandler) HandleSkillByID(w http.ResponseWriter, r *http.Request) {
-	// Sanitize URL path to prevent injection attacks
-	sanitizedPath := sanitizeLogInput(r.URL.Path)
-	skillID := extractSkillID(sanitizedPath)
-	if skillID == "" {
-		writeError(w, http.StatusBadRequest, "skill ID required")
+	// Safely extract and validate skill ID from URL path
+	skillID, err := safeExtractSkillID(r.URL.Path)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid skill ID")
 		return
 	}
-
-	// Validate skillID to prevent path traversal and injection attacks
-	if err := validateSkillID(skillID); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid skill ID")
+	if skillID == "" {
+		writeError(w, http.StatusBadRequest, "skill ID required")
 		return
 	}
 
@@ -118,23 +160,14 @@ func (h *SkillsHandler) HandleSkillAction(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Sanitize URL path to prevent injection attacks
-	sanitizedPath := sanitizeLogInput(r.URL.Path)
-	skillID, action := extractSkillIDAndAction(sanitizedPath)
+	// Safely extract and validate skill ID and action from URL path
+	skillID, action, err := safeExtractSkillIDAndAction(r.URL.Path)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid skill ID or action")
+		return
+	}
 	if skillID == "" || action == "" {
 		writeError(w, http.StatusBadRequest, "skill ID and action required")
-		return
-	}
-
-	// Validate skillID to prevent path traversal and injection attacks
-	if err := validateSkillID(skillID); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid skill ID")
-		return
-	}
-
-	// Validate action parameter
-	if !isValidAction(action) {
-		writeError(w, http.StatusBadRequest, "invalid action")
 		return
 	}
 
