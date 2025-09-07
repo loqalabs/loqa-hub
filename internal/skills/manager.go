@@ -502,6 +502,7 @@ func (sm *SkillManager) loadSkillConfig(skillID string) (*SkillConfig, error) {
 		return nil, fmt.Errorf("invalid skill ID: %w", err)
 	}
 
+	// Safe: skillID validated by validateSkillID() above - prevents path traversal
 	configPath := filepath.Join(sm.config.ConfigStore, skillID+".json")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -528,6 +529,7 @@ func (sm *SkillManager) saveSkillConfig(skillID string, config *SkillConfig) err
 		return err
 	}
 
+	// Safe: skillID validated by validateSkillID() above - prevents path traversal
 	configPath := filepath.Join(sm.config.ConfigStore, skillID+".json")
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
