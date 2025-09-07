@@ -511,8 +511,25 @@ func (sm *SkillManager) loadSkillConfig(skillID string) (*SkillConfig, error) {
 		return nil, fmt.Errorf("invalid skill ID: %w", err)
 	}
 
-	// Safe: skillID validated by validateSkillID() above - prevents path traversal
+	// Safely construct config path with additional validation
 	configPath := filepath.Join(sm.config.ConfigStore, skillID+".json")
+	
+	// Validate that the resolved path is within the expected directory
+	absConfigPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve config path: %w", err)
+	}
+	
+	absConfigStore, err := filepath.Abs(sm.config.ConfigStore)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve config store path: %w", err)
+	}
+	
+	// Ensure the config file path is within the config store directory
+	if !strings.HasPrefix(absConfigPath, absConfigStore+string(filepath.Separator)) {
+		return nil, fmt.Errorf("invalid config path: path traversal detected")
+	}
+	
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, err
@@ -538,8 +555,25 @@ func (sm *SkillManager) saveSkillConfig(skillID string, config *SkillConfig) err
 		return err
 	}
 
-	// Safe: skillID validated by validateSkillID() above - prevents path traversal
+	// Safely construct config path with additional validation
 	configPath := filepath.Join(sm.config.ConfigStore, skillID+".json")
+	
+	// Validate that the resolved path is within the expected directory
+	absConfigPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve config path: %w", err)
+	}
+	
+	absConfigStore, err := filepath.Abs(sm.config.ConfigStore)
+	if err != nil {
+		return fmt.Errorf("failed to resolve config store path: %w", err)
+	}
+	
+	// Ensure the config file path is within the config store directory
+	if !strings.HasPrefix(absConfigPath, absConfigStore+string(filepath.Separator)) {
+		return fmt.Errorf("invalid config path: path traversal detected")
+	}
+	
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err
