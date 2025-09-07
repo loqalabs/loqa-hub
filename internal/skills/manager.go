@@ -72,7 +72,7 @@ func (sm *SkillManager) safeConfigPath(skillID string) (string, error) {
 		return "", fmt.Errorf("invalid file path: path traversal detected")
 	}
 	
-	return configPath, nil
+	return absConfigPath, nil
 }
 
 
