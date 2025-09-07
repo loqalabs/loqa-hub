@@ -1,0 +1,71 @@
+{
+  "rules": [
+    "NEVER use AI attribution in commit messages (no 'Generated with Claude Code' or Co-Authored-By lines)",
+    "Always read existing files before making changes",
+    "Prefer editing existing files over creating new ones when possible",
+    "Use TodoWrite tool to track progress on complex tasks",
+    "Follow established git workflow and branch naming conventions",
+    "Reference issue numbers in commits when applicable",
+    "Update ALL affected documentation proactively without being asked",
+    "Test that changes don't break existing functionality",
+    "Maintain backward compatibility where possible"
+  ],
+  "documentation_checklist": [
+    "README.md files (main and service-specific)",
+    "Architecture documentation",
+    "Configuration guides and environment variables", 
+    "CLAUDE.md (commands, services, ports, workflows)",
+    "Getting started guides if user experience changes",
+    "Docker compose comments for new services"
+  ],
+  "commit_guidelines": {
+    "never_include": [
+      "Generated with Claude Code",
+      "Co-Authored-By: Claude",
+      "🤖 Generated with",
+      "AI attribution"
+    ],
+    "always_include": [
+      "Reference to issue numbers when applicable",
+      "Clear description of what changed and why"
+    ]
+  },
+  "workflow_principles": {
+    "scope_boundaries": "Ask for clarification when scope is unclear",
+    "technical_approach": "Propose options when multiple paths exist", 
+    "dependencies": "Stop and ask when blockers are found",
+    "testing": "Include appropriate test coverage for changes"
+  },
+  "repository_context": {
+    "service_role": "Central hub service - orchestrates communication between all microservices",
+    "service_type": "Core backend service (Go)",
+    "dependencies": ["loqa-proto", "loqa-skills"],
+    "connected_services": ["loqa-relay", "loqa-commander", "loqa-device-service"],
+    "microservice_architecture": {
+      "structure": "Part of loqalabs/ microservice ecosystem - each subfolder is an independent git repository",
+      "peer_services_location": "../ (one folder up from current repo)",
+      "check_before_cloning": "Always check if ../SERVICE_NAME exists before attempting to clone repositories",
+      "cross_service_changes": {
+        "simple_changes": "Make directly to main branch of supporting repos (proto, configs)",
+        "complex_changes": "Create matching feature branches across affected repos",
+        "merge_order": "Supporting repos first (proto, skills), core services last"
+      }
+    }
+  },
+  "best_practices": [
+    "Preserve privacy-first design principles",
+    "Maintain microservice architecture benefits", 
+    "Keep changes focused and atomic",
+    "Update cross-repository references consistently",
+    "Use consistent tagging and categorization",
+    "Make changes easy to find and understand later"
+  ],
+  "avoid": [
+    "Making changes without understanding current state",
+    "Breaking existing functionality unnecessarily",
+    "Creating new files when editing existing ones works",
+    "Rushing implementation without proper planning",
+    "Ignoring dependencies between repositories",
+    "Over-analyzing ideas that just need to be captured"
+  ]
+}
