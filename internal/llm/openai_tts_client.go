@@ -36,11 +36,11 @@ import (
 
 // OpenAITTSRequest represents a request to an OpenAI-compatible TTS API
 type OpenAITTSRequest struct {
-	Model   string                 `json:"model"`
-	Input   string                 `json:"input"`
-	Voice   string                 `json:"voice"`
-	Format  string                 `json:"response_format"`
-	Speed   float32                `json:"speed,omitempty"`
+	Model   string         `json:"model"`
+	Input   string         `json:"input"`
+	Voice   string         `json:"voice"`
+	Format  string         `json:"response_format"`
+	Speed   float32        `json:"speed,omitempty"`
 	Options map[string]any `json:"normalization_options,omitempty"`
 }
 

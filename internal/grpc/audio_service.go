@@ -19,6 +19,7 @@
 package grpc
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -38,11 +39,75 @@ import (
 // AudioService implements the gRPC AudioService
 type AudioService struct {
 	pb.UnimplementedAudioServiceServer
-	transcriber   llm.Transcriber
-	commandParser *llm.CommandParser
-	ttsClient     llm.TextToSpeech
-	natsService   *messaging.NATSService
-	eventsStore   *storage.VoiceEventsStore
+	transcriber             llm.Transcriber
+	commandParser           *llm.CommandParser
+	ttsClient               llm.TextToSpeech
+	natsService             *messaging.NATSService
+	eventsStore             *storage.VoiceEventsStore
+	currentExecutionContext *CommandExecutionContext
+}
+
+// CommandExecutionContext holds context information for command execution
+type CommandExecutionContext struct {
+	RelayID       string
+	RequestID     string
+	EventUUID     string
+	Transcription string
+}
+
+// SetCommandExecutionContext sets the context for command execution (stored in AudioService)
+func (as *AudioService) SetCommandExecutionContext(ctx *CommandExecutionContext) {
+	as.currentExecutionContext = ctx
+}
+
+// Implement llm.CommandExecutor interface for AudioService
+func (as *AudioService) ExecuteCommand(ctx context.Context, cmd *llm.Command) error {
+	// For now, we just publish the command to NATS
+	// In the future, this could be extended to handle actual command execution
+	if as.natsService == nil || !as.natsService.IsConnected() {
+		return fmt.Errorf("NATS service not available")
+	}
+
+	// Use the current execution context if available
+	relayID := "multi-cmd"
+	requestID := "multi-cmd"
+	transcription := cmd.Response
+
+	if as.currentExecutionContext != nil {
+		relayID = as.currentExecutionContext.RelayID
+		requestID = as.currentExecutionContext.RequestID
+		transcription = as.currentExecutionContext.Transcription
+	}
+
+	commandEvent := &messaging.CommandEvent{
+		RelayID:       relayID,
+		Transcription: transcription,
+		Intent:        cmd.Intent,
+		Entities:      cmd.Entities,
+		Confidence:    cmd.Confidence,
+		Timestamp:     time.Now().UnixNano(),
+		RequestID:     requestID,
+	}
+
+	log.Printf("🎯 Executing individual command: %s (part of multi-command)", cmd.Intent)
+
+	err := as.natsService.PublishVoiceCommand(commandEvent)
+	if err != nil {
+		return fmt.Errorf("failed to publish command %s: %w", cmd.Intent, err)
+	}
+
+	// Also publish device command if applicable
+	if as.isDeviceCommand(cmd.Intent) {
+		deviceCommand := as.createDeviceCommand(commandEvent)
+		if deviceCommand != nil {
+			if deviceErr := as.natsService.PublishDeviceCommand(deviceCommand); deviceErr != nil {
+				log.Printf("❌ Failed to publish device command for %s: %v", cmd.Intent, deviceErr)
+				// Don't fail the entire command execution for device command publishing failure
+			}
+		}
+	}
+
+	return nil
 }
 
 // NewAudioServiceWithSTT creates a new audio service using OpenAI-compatible STT service
@@ -284,43 +349,119 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 				continue
 			}
 
-			// Parse command using LLM
-			command, err := as.commandParser.ParseCommand(transcription)
+			// Parse command using LLM (with multi-command support)
+			multiCmd, err := as.commandParser.ParseMultiCommand(transcription)
 			if err != nil {
-				logging.LogError(err, "Error parsing command",
+				logging.LogError(err, "Error parsing multi-command",
 					zap.String("relay_id", chunk.RelayId),
 					zap.String("event_uuid", voiceEvent.UUID),
 					zap.String("transcription", transcription),
 				)
-				command = &llm.Command{
-					Intent:     "unknown",
-					Entities:   make(map[string]string),
-					Confidence: 0.0,
-					Response:   "I'm having trouble understanding you right now.",
+				// Fallback to single unknown command
+				multiCmd = &llm.MultiCommand{
+					Commands: []llm.Command{{
+						Intent:     "unknown",
+						Entities:   make(map[string]string),
+						Confidence: 0.0,
+						Response:   "I'm having trouble understanding you right now.",
+					}},
+					IsMulti:          false,
+					OriginalText:     transcription,
+					CombinedResponse: "I'm having trouble understanding you right now.",
 				}
 			}
 
-			// Set command parsing results
-			voiceEvent.SetCommandResult(command.Intent, command.Entities, command.Confidence)
+			var commandStr string
+			var responseText string
+			var primaryCommand *llm.Command
 
-			commandStr := command.Intent
-			responseText := command.Response
+			// Handle multi-command or single command
+			if multiCmd.IsMulti && len(multiCmd.Commands) > 1 {
+				// Multi-command processing
+				logging.LogAudioProcessing(chunk.RelayId, "multi_command_detected",
+					zap.String("event_uuid", voiceEvent.UUID),
+					zap.Int("command_count", len(multiCmd.Commands)),
+					zap.String("original_text", multiCmd.OriginalText),
+				)
 
-			logging.LogAudioProcessing(chunk.RelayId, "command_parsed",
-				zap.String("event_uuid", voiceEvent.UUID),
-				zap.String("intent", command.Intent),
-				zap.Float64("confidence", command.Confidence),
-				zap.Any("entities", command.Entities),
-			)
+				// Set execution context for command execution
+				as.SetCommandExecutionContext(&CommandExecutionContext{
+					RelayID:       chunk.RelayId,
+					RequestID:     chunk.RelayId,
+					EventUUID:     voiceEvent.UUID,
+					Transcription: transcription,
+				})
 
-			// Publish command event to NATS
+				// Execute commands sequentially using command queue
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+
+				queue := llm.NewCommandQueue(multiCmd.Commands, 5*time.Second, true)
+				execResult, execErr := queue.Execute(ctx, as)
+
+				if execErr != nil {
+					logging.LogError(execErr, "Multi-command execution failed",
+						zap.String("relay_id", chunk.RelayId),
+						zap.String("event_uuid", voiceEvent.UUID),
+					)
+					commandStr = "multi_command_failed"
+					responseText = "I had trouble executing some of your commands."
+				} else {
+					commandStr = fmt.Sprintf("multi_%s", multiCmd.Commands[0].Intent)
+					responseText = execResult.CombinedResponse
+					if execResult.RollbackOccurred {
+						responseText += " Some commands were rolled back due to failures."
+					}
+
+					logging.LogAudioProcessing(chunk.RelayId, "multi_command_completed",
+						zap.String("event_uuid", voiceEvent.UUID),
+						zap.Bool("success", execResult.Success),
+						zap.Duration("duration", execResult.TotalDuration),
+						zap.Int("completed_commands", len(execResult.CompletedItems)),
+						zap.Bool("rollback_occurred", execResult.RollbackOccurred),
+					)
+				}
+
+				// Use first command for voice event tracking
+				primaryCommand = &multiCmd.Commands[0]
+			} else {
+				// Single command processing (existing logic)
+				if len(multiCmd.Commands) > 0 {
+					primaryCommand = &multiCmd.Commands[0]
+				} else {
+					// Create a default unknown command
+					defaultCmd := llm.Command{
+						Intent:     "unknown",
+						Entities:   make(map[string]string),
+						Confidence: 0.0,
+						Response:   "I'm not sure what you want me to do.",
+					}
+					primaryCommand = &defaultCmd
+				}
+				commandStr = primaryCommand.Intent
+				responseText = primaryCommand.Response
+
+				logging.LogAudioProcessing(chunk.RelayId, "single_command_parsed",
+					zap.String("event_uuid", voiceEvent.UUID),
+					zap.String("intent", primaryCommand.Intent),
+					zap.Float64("confidence", primaryCommand.Confidence),
+					zap.Any("entities", primaryCommand.Entities),
+				)
+			}
+
+			// Set command parsing results for voice event
+			voiceEvent.SetCommandResult(primaryCommand.Intent, primaryCommand.Entities, primaryCommand.Confidence)
+
+			// Publish command event to NATS (only for single commands or primary command in multi-command)
 			if as.natsService != nil && as.natsService.IsConnected() {
+				// For multi-commands, individual commands are published during execution
+				// Here we publish the primary/summary command event
 				commandEvent := &messaging.CommandEvent{
 					RelayID:       chunk.RelayId,
 					Transcription: transcription,
-					Intent:        command.Intent,
-					Entities:      command.Entities,
-					Confidence:    command.Confidence,
+					Intent:        primaryCommand.Intent,
+					Entities:      primaryCommand.Entities,
+					Confidence:    primaryCommand.Confidence,
 					Timestamp:     time.Now().UnixNano(),
 					RequestID:     chunk.RelayId, // Using relay ID as request ID for now
 				}
@@ -334,12 +475,12 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 				} else {
 					logging.LogNATSEvent("loqa.voice.commands", "published",
 						zap.String("relay_id", chunk.RelayId),
-						zap.String("intent", command.Intent),
+						zap.String("intent", primaryCommand.Intent),
 					)
 				}
 
 				// If this is a device command, also publish a device command event
-				if as.isDeviceCommand(command.Intent) {
+				if as.isDeviceCommand(primaryCommand.Intent) {
 					deviceCommand := as.createDeviceCommand(commandEvent)
 					if deviceCommand != nil {
 						if err := as.natsService.PublishDeviceCommand(deviceCommand); err != nil {
