@@ -23,6 +23,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/loqalabs/loqa-hub/internal/api"
 	"github.com/loqalabs/loqa-hub/internal/config"
@@ -119,9 +120,16 @@ func (s *Server) Start() error {
 		}
 	}()
 
-	// Start HTTP server
+	// Start HTTP server with security timeouts
 	log.Printf("🌐 HTTP server listening on :%s", s.cfg.Port)
-	return http.ListenAndServe(":"+s.cfg.Port, s.mux)
+	server := &http.Server{
+		Addr:         ":" + s.cfg.Port,
+		Handler:      s.mux,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	return server.ListenAndServe()
 }
 
 func (s *Server) routes() {

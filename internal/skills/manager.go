@@ -26,13 +26,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/loqalabs/loqa-hub/internal/logging"
+	"github.com/loqalabs/loqa-hub/internal/security"
 )
 
 var (
@@ -42,29 +42,39 @@ var (
 	ErrPermissionDenied   = errors.New("permission denied")
 	ErrSkillInitFailed    = errors.New("skill initialization failed")
 	ErrNoSkillCanHandle   = errors.New("no skill can handle this intent")
-	ErrInvalidSkillID     = errors.New("invalid skill ID")
+	ErrInvalidSkillID     = security.ErrInvalidSkillID
 )
 
-// validateSkillID validates that a skill ID is safe for filesystem operations
-// and doesn't contain path traversal characters
-func validateSkillID(skillID string) error {
-	if skillID == "" {
-		return ErrInvalidSkillID
+// safeConfigPath constructs a safe config file path within the config store
+func (sm *SkillManager) safeConfigPath(skillID string) (string, error) {
+	// Validate skill ID using shared security function
+	if err := security.ValidateSkillID(skillID); err != nil {
+		return "", fmt.Errorf("invalid skill ID: %w", err)
 	}
-
-	// Check for path traversal attempts
-	if strings.Contains(skillID, "..") || strings.Contains(skillID, "/") || strings.Contains(skillID, "\\") {
-		return ErrInvalidSkillID
+	
+	// Get absolute path of safe directory first
+	safeDir, err := filepath.Abs(sm.config.ConfigStore)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve config store path: %w", err)
 	}
-
-	// Only allow alphanumeric characters, hyphens, and underscores
-	validSkillID := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
-	if !validSkillID.MatchString(skillID) {
-		return ErrInvalidSkillID
+	
+	// Construct path by joining safe directory with user input
+	configPath := filepath.Join(safeDir, skillID+".json")
+	
+	// Get absolute path of the result (CodeQL recommended pattern)
+	absConfigPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve config path: %w", err)
 	}
-
-	return nil
+	
+	// Ensure the resolved path is within the safe directory (CodeQL recommended check)
+	if !strings.HasPrefix(absConfigPath, safeDir+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid file path: path traversal detected")
+	}
+	
+	return absConfigPath, nil
 }
+
 
 // SkillManagerConfig holds configuration for the skill manager
 type SkillManagerConfig struct {
@@ -117,7 +127,7 @@ func NewSkillManager(config SkillManagerConfig, loader SkillLoader) *SkillManage
 
 // Start initializes the skill manager and loads skills
 func (sm *SkillManager) Start(ctx context.Context) error {
-	logging.Sugar.Infow("Starting skill manager", "skills_dir", sm.config.SkillsDir)
+	logging.Sugar.Infow("Starting skill manager", "skills_dir", security.SanitizeLogInput(sm.config.SkillsDir))
 
 	if sm.config.AutoLoad {
 		if err := sm.loadAllSkills(ctx); err != nil {
@@ -154,6 +164,16 @@ func (sm *SkillManager) LoadSkill(ctx context.Context, skillPath string) error {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
+	// Validate skill path to prevent path traversal attacks
+	if skillPath == "" {
+		return fmt.Errorf("skill path cannot be empty")
+	}
+	
+	// Additional path validation - ensure no path traversal attempts
+	if strings.Contains(skillPath, "..") || strings.Contains(skillPath, "\\") {
+		return fmt.Errorf("invalid skill path: path traversal detected")
+	}
+
 	// Load the manifest first to get skill ID
 	manifest, err := sm.loadManifest(skillPath)
 	if err != nil {
@@ -187,7 +207,7 @@ func (sm *SkillManager) LoadSkill(ctx context.Context, skillPath string) error {
 	// Load or create skill configuration
 	config, err := sm.loadSkillConfig(manifest.ID)
 	if err != nil {
-		logging.Sugar.Warnw("Failed to load skill config, using defaults", "skill", manifest.ID, "error", err)
+		logging.Sugar.Warnw("Failed to load skill config, using defaults", "skill", security.SanitizeLogInput(manifest.ID), "error", err)
 		config = &SkillConfig{
 			SkillID:     manifest.ID,
 			Name:        manifest.Name,
@@ -223,9 +243,9 @@ func (sm *SkillManager) LoadSkill(ctx context.Context, skillPath string) error {
 	sm.skills[manifest.ID] = loadedSkill
 
 	logging.Sugar.Infow("Skill loaded successfully",
-		"skill_id", manifest.ID,
-		"name", manifest.Name,
-		"version", manifest.Version)
+		"skill_id", security.SanitizeLogInput(manifest.ID),
+		"name", security.SanitizeLogInput(manifest.Name),
+		"version", security.SanitizeLogInput(manifest.Version))
 
 	return nil
 }
@@ -250,17 +270,17 @@ func (sm *SkillManager) unloadSkillUnsafe(ctx context.Context, skillID string) e
 
 	// Teardown the skill
 	if err := loadedSkill.Plugin.Teardown(ctx); err != nil {
-		logging.Sugar.Warnw("Skill teardown failed", "skill", skillID, "error", err)
+		logging.Sugar.Warnw("Skill teardown failed", "skill", security.SanitizeLogInput(skillID), "error", err)
 	}
 
 	// Unload from loader
 	if err := sm.loader.UnloadSkill(ctx, loadedSkill.Plugin); err != nil {
-		logging.Sugar.Warnw("Failed to unload skill from loader", "skill", skillID, "error", err)
+		logging.Sugar.Warnw("Failed to unload skill from loader", "skill", security.SanitizeLogInput(skillID), "error", err)
 	}
 
 	delete(sm.skills, skillID)
 
-	logging.Sugar.Infow("Skill unloaded", "skill_id", skillID)
+	logging.Sugar.Infow("Skill unloaded", "skill_id", security.SanitizeLogInput(skillID))
 	return nil
 }
 
@@ -304,7 +324,7 @@ func (sm *SkillManager) HandleIntent(ctx context.Context, intent *VoiceIntent) (
 			candidate.mutex.Unlock()
 
 			logging.Sugar.Warnw("Skill execution failed",
-				"skill", candidate.Info.Manifest.ID,
+				"skill", security.SanitizeLogInput(candidate.Info.Manifest.ID),
 				"error", err)
 			continue
 		}
@@ -406,7 +426,7 @@ func (sm *SkillManager) updateSkillEnabled(ctx context.Context, skillID string, 
 
 	// Save configuration
 	if err := sm.saveSkillConfig(skillID, loadedSkill.Info.Config); err != nil {
-		logging.Sugar.Warnw("Failed to save skill config", "skill", skillID, "error", err)
+		logging.Sugar.Warnw("Failed to save skill config", "skill", security.SanitizeLogInput(skillID), "error", err)
 	}
 
 	return nil
@@ -428,7 +448,7 @@ func (sm *SkillManager) loadAllSkills(ctx context.Context) error {
 			manifestPath := filepath.Join(path, "skill.json")
 			if _, err := os.Stat(manifestPath); err == nil {
 				if loadErr := sm.LoadSkill(ctx, path); loadErr != nil {
-					logging.Sugar.Warnw("Failed to load skill", "path", path, "error", loadErr)
+					logging.Sugar.Warnw("Failed to load skill", "path", security.SanitizeLogInput(path), "error", loadErr)
 				}
 			}
 			return filepath.SkipDir // Don't recurse into subdirectories
@@ -467,7 +487,7 @@ func (sm *SkillManager) loadManifest(skillPath string) (*SkillManifest, error) {
 	}
 
 	// Validate the skill ID from the manifest
-	if err := validateSkillID(manifest.ID); err != nil {
+	if err := security.ValidateSkillID(manifest.ID); err != nil {
 		return nil, fmt.Errorf("invalid skill ID in manifest: %w", err)
 	}
 
@@ -498,11 +518,12 @@ func (sm *SkillManager) validateSkill(manifest *SkillManifest) error {
 
 // loadSkillConfig loads configuration for a skill
 func (sm *SkillManager) loadSkillConfig(skillID string) (*SkillConfig, error) {
-	if err := validateSkillID(skillID); err != nil {
-		return nil, fmt.Errorf("invalid skill ID: %w", err)
+	// Get safe config path
+	configPath, err := sm.safeConfigPath(skillID)
+	if err != nil {
+		return nil, err
 	}
-
-	configPath := filepath.Join(sm.config.ConfigStore, skillID+".json")
+	
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, err
@@ -515,24 +536,25 @@ func (sm *SkillManager) loadSkillConfig(skillID string) (*SkillConfig, error) {
 
 // saveSkillConfig saves configuration for a skill
 func (sm *SkillManager) saveSkillConfig(skillID string, config *SkillConfig) error {
-	if err := validateSkillID(skillID); err != nil {
-		return fmt.Errorf("invalid skill ID: %w", err)
-	}
-
 	if sm.config.ConfigStore == "" {
 		return nil
 	}
 
 	// Ensure config directory exists
-	if err := os.MkdirAll(sm.config.ConfigStore, 0755); err != nil {
+	if err := os.MkdirAll(sm.config.ConfigStore, 0750); err != nil {
 		return err
 	}
 
-	configPath := filepath.Join(sm.config.ConfigStore, skillID+".json")
+	// Get safe config path
+	configPath, err := sm.safeConfigPath(skillID)
+	if err != nil {
+		return err
+	}
+	
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err
 	}
 
-	return os.WriteFile(configPath, data, 0644)
+	return os.WriteFile(configPath, data, 0600)
 }

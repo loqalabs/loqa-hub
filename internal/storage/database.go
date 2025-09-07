@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/loqalabs/loqa-hub/internal/security"
 	_ "modernc.org/sqlite"
 )
 
@@ -77,7 +78,7 @@ func NewDatabase(config DatabaseConfig) (*Database, error) {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
-	log.Printf("✅ Database connected: %s", config.Path)
+	log.Printf("✅ Database connected: %s", security.SanitizeLogInput(config.Path))
 	return database, nil
 }
 
@@ -96,7 +97,7 @@ func ensureDir(dir string) error {
 	if dir == "" || dir == "." {
 		return nil
 	}
-	return os.MkdirAll(dir, 0755)
+	return os.MkdirAll(dir, 0750)
 }
 
 // configureSQLite sets optimal SQLite settings for our use case
@@ -145,7 +146,7 @@ func (d *Database) DB() *sql.DB {
 // Close closes the database connection
 func (d *Database) Close() error {
 	if d.db != nil {
-		log.Printf("🔌 Closing database connection: %s", d.path)
+		log.Printf("🔌 Closing database connection: %s", security.SanitizeLogInput(d.path))
 		return d.db.Close()
 	}
 	return nil

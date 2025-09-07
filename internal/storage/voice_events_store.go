@@ -25,12 +25,14 @@ import (
 	"time"
 
 	"github.com/loqalabs/loqa-hub/internal/events"
+	"github.com/loqalabs/loqa-hub/internal/security"
 )
 
 // VoiceEventsStore handles database operations for voice events
 type VoiceEventsStore struct {
 	db *Database
 }
+
 
 // NewVoiceEventsStore creates a new voice events store
 func NewVoiceEventsStore(db *Database) *VoiceEventsStore {
@@ -73,7 +75,7 @@ func (s *VoiceEventsStore) Insert(event *events.VoiceEvent) error {
 	}
 
 	log.Printf("📝 Stored voice event: %s (RelayID: %s, Intent: %s)",
-		event.UUID, event.RelayID, event.Intent)
+		security.SanitizeLogInput(event.UUID), security.SanitizeLogInput(event.RelayID), security.SanitizeLogInput(event.Intent))
 	return nil
 }
 
@@ -190,7 +192,7 @@ func (s *VoiceEventsStore) Delete(uuid string) error {
 		return fmt.Errorf("voice event not found: %s", uuid)
 	}
 
-	log.Printf("🗑️  Deleted voice event: %s", uuid)
+	log.Printf("🗑️  Deleted voice event: %s", security.SanitizeLogInput(uuid))
 	return nil
 }
 
@@ -249,16 +251,9 @@ func (s *VoiceEventsStore) buildListQuery(options ListOptions) (string, []interf
 		args = append(args, options.EndTime)
 	}
 
-	// Apply sorting
-	sortBy := options.SortBy
-	if sortBy == "" {
-		sortBy = "timestamp"
-	}
-
-	sortOrder := options.SortOrder
-	if sortOrder == "" {
-		sortOrder = "DESC"
-	}
+	// Apply sorting with validation to prevent SQL injection
+	sortBy := validateSortBy(options.SortBy)
+	sortOrder := validateSortOrder(options.SortOrder)
 
 	query += fmt.Sprintf(" ORDER BY %s %s", sortBy, sortOrder)
 
@@ -314,4 +309,35 @@ func (s *VoiceEventsStore) scanVoiceEvent(scanner interface{}) (*events.VoiceEve
 	}
 
 	return &event, nil
+}
+
+// validateSortBy ensures only safe column names are used for sorting
+func validateSortBy(sortBy string) string {
+	validColumns := map[string]bool{
+		"timestamp":        true,
+		"confidence":       true,
+		"processing_time":  true,
+		"processing_time_ms": true,
+		"uuid":            true,
+		"relay_id":        true,
+		"intent":          true,
+		"success":         true,
+		"audio_duration":  true,
+		"sample_rate":     true,
+	}
+
+	if sortBy != "" && validColumns[sortBy] {
+		return sortBy
+	}
+	return "timestamp" // safe default
+}
+
+// validateSortOrder ensures only ASC or DESC are used
+func validateSortOrder(sortOrder string) string {
+	switch sortOrder {
+	case "ASC", "DESC":
+		return sortOrder
+	default:
+		return "DESC" // safe default
+	}
 }

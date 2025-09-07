@@ -21,11 +21,71 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/loqalabs/loqa-hub/internal/logging"
+	"github.com/loqalabs/loqa-hub/internal/security"
 	"github.com/loqalabs/loqa-hub/internal/skills"
 )
+
+// isValidAction validates that the action is one of the allowed values
+func isValidAction(action string) bool {
+	validActions := map[string]bool{
+		"enable":  true,
+		"disable": true,
+		"reload":  true,
+	}
+	return validActions[action]
+}
+
+// safeExtractSkillID safely extracts skill ID from URL path with validation
+func safeExtractSkillID(urlPath string) (string, error) {
+	// Parse URL to ensure it's well-formed
+	u, err := url.Parse(urlPath)
+	if err != nil {
+		return "", err
+	}
+	
+	// Use the cleaned path
+	cleanPath := u.Path
+	
+	// Extract skill ID using the existing logic but on cleaned path
+	skillID := extractSkillID(cleanPath)
+	
+	// Validate extracted skill ID
+	if err := security.ValidateSkillID(skillID); err != nil {
+		return "", err
+	}
+	
+	return skillID, nil
+}
+
+// safeExtractSkillIDAndAction safely extracts skill ID and action from URL path
+func safeExtractSkillIDAndAction(urlPath string) (string, string, error) {
+	// Parse URL to ensure it's well-formed
+	u, err := url.Parse(urlPath)
+	if err != nil {
+		return "", "", err
+	}
+	
+	// Use the cleaned path
+	cleanPath := u.Path
+	
+	// Extract skill ID and action using existing logic
+	skillID, action := extractSkillIDAndAction(cleanPath)
+	
+	// Validate extracted values
+	if err := security.ValidateSkillID(skillID); err != nil {
+		return "", "", err
+	}
+	
+	if !isValidAction(action) {
+		return "", "", skills.ErrInvalidSkillID // reuse this error for simplicity
+	}
+	
+	return skillID, action, nil
+}
 
 // SkillsHandler handles HTTP requests for skill management
 type SkillsHandler struct {
@@ -53,7 +113,12 @@ func (h *SkillsHandler) HandleSkills(w http.ResponseWriter, r *http.Request) {
 
 // HandleSkillByID handles requests to /api/skills/{id}
 func (h *SkillsHandler) HandleSkillByID(w http.ResponseWriter, r *http.Request) {
-	skillID := extractSkillID(r.URL.Path)
+	// Safely extract and validate skill ID from URL path
+	skillID, err := safeExtractSkillID(r.URL.Path)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid skill ID")
+		return
+	}
 	if skillID == "" {
 		writeError(w, http.StatusBadRequest, "skill ID required")
 		return
@@ -78,7 +143,12 @@ func (h *SkillsHandler) HandleSkillAction(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	skillID, action := extractSkillIDAndAction(r.URL.Path)
+	// Safely extract and validate skill ID and action from URL path
+	skillID, action, err := safeExtractSkillIDAndAction(r.URL.Path)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid skill ID or action")
+		return
+	}
 	if skillID == "" || action == "" {
 		writeError(w, http.StatusBadRequest, "skill ID and action required")
 		return
@@ -92,7 +162,7 @@ func (h *SkillsHandler) HandleSkillAction(w http.ResponseWriter, r *http.Request
 	case "reload":
 		h.reloadSkill(w, r, skillID)
 	default:
-		writeError(w, http.StatusBadRequest, "unknown action: "+action)
+		writeError(w, http.StatusBadRequest, "unknown action: "+security.SanitizeLogInput(action))
 	}
 }
 
@@ -116,7 +186,7 @@ func (h *SkillsHandler) getSkill(w http.ResponseWriter, r *http.Request, skillID
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
-		logging.Sugar.Errorw("Failed to get skill", "skill", skillID, "error", err)
+		logging.Sugar.Errorw("Failed to get skill", "skill", security.SanitizeLogInput(skillID), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to get skill")
 		return
 	}
@@ -145,7 +215,7 @@ func (h *SkillsHandler) loadSkill(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "skill already loaded")
 			return
 		}
-		logging.Sugar.Errorw("Failed to load skill", "path", request.SkillPath, "error", err)
+		logging.Sugar.Errorw("Failed to load skill", "path", security.SanitizeLogInput(request.SkillPath), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to load skill: "+err.Error())
 		return
 	}
@@ -163,7 +233,7 @@ func (h *SkillsHandler) unloadSkill(w http.ResponseWriter, r *http.Request, skil
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
-		logging.Sugar.Errorw("Failed to unload skill", "skill", skillID, "error", err)
+		logging.Sugar.Errorw("Failed to unload skill", "skill", security.SanitizeLogInput(skillID), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to unload skill")
 		return
 	}
@@ -181,7 +251,7 @@ func (h *SkillsHandler) enableSkill(w http.ResponseWriter, r *http.Request, skil
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
-		logging.Sugar.Errorw("Failed to enable skill", "skill", skillID, "error", err)
+		logging.Sugar.Errorw("Failed to enable skill", "skill", security.SanitizeLogInput(skillID), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to enable skill")
 		return
 	}
@@ -199,7 +269,7 @@ func (h *SkillsHandler) disableSkill(w http.ResponseWriter, r *http.Request, ski
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
-		logging.Sugar.Errorw("Failed to disable skill", "skill", skillID, "error", err)
+		logging.Sugar.Errorw("Failed to disable skill", "skill", security.SanitizeLogInput(skillID), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to disable skill")
 		return
 	}
@@ -219,21 +289,21 @@ func (h *SkillsHandler) reloadSkill(w http.ResponseWriter, r *http.Request, skil
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
-		logging.Sugar.Errorw("Failed to get skill for reload", "skill", skillID, "error", err)
+		logging.Sugar.Errorw("Failed to get skill for reload", "skill", security.SanitizeLogInput(skillID), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to get skill")
 		return
 	}
 
 	// Unload the skill
 	if err := h.skillManager.UnloadSkill(r.Context(), skillID); err != nil {
-		logging.Sugar.Errorw("Failed to unload skill during reload", "skill", skillID, "error", err)
+		logging.Sugar.Errorw("Failed to unload skill during reload", "skill", security.SanitizeLogInput(skillID), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to unload skill")
 		return
 	}
 
 	// Reload the skill
 	if err := h.skillManager.LoadSkill(r.Context(), skillInfo.PluginPath); err != nil {
-		logging.Sugar.Errorw("Failed to reload skill", "skill", skillID, "path", skillInfo.PluginPath, "error", err)
+		logging.Sugar.Errorw("Failed to reload skill", "skill", security.SanitizeLogInput(skillID), "path", security.SanitizeLogInput(skillInfo.PluginPath), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to reload skill: "+err.Error())
 		return
 	}
@@ -262,7 +332,7 @@ func (h *SkillsHandler) updateSkill(w http.ResponseWriter, r *http.Request, skil
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
-		logging.Sugar.Errorw("Failed to get skill for update", "skill", skillID, "error", err)
+		logging.Sugar.Errorw("Failed to get skill for update", "skill", security.SanitizeLogInput(skillID), "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to get skill")
 		return
 	}
