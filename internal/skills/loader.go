@@ -40,17 +40,17 @@ func validateSkillPath(skillPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to resolve skill path: %w", err)
 	}
-	
+
 	absRootDir, err := filepath.Abs(SkillsRootDir)
 	if err != nil {
 		return fmt.Errorf("failed to resolve skills root directory: %w", err)
 	}
-	
+
 	// Ensure the skill path is within the skills root directory
 	if !strings.HasPrefix(absSkillPath, absRootDir+string(filepath.Separator)) && absSkillPath != absRootDir {
 		return fmt.Errorf("skill path %q is outside the allowed skills directory %q", skillPath, SkillsRootDir)
 	}
-	
+
 	return nil
 }
 
@@ -80,7 +80,7 @@ func (l *DefaultSkillLoader) LoadSkill(ctx context.Context, skillPath string) (S
 	if err := validateSkillPath(skillPath); err != nil {
 		return nil, fmt.Errorf("invalid skill path: %w", err)
 	}
-	
+
 	// Load manifest
 	manifestPath := filepath.Join(skillPath, "skill.json")
 	manifestData, err := os.ReadFile(manifestPath)
@@ -149,7 +149,7 @@ func (l *DefaultSkillLoader) loadGoPlugin(ctx context.Context, skillPath string,
 	// Create the skill instance
 	skill := newSkillFunc()
 	logging.Sugar.Infow("Loaded Go plugin skill", "skill", manifest.ID, "path", pluginPath)
-	
+
 	return skill, nil
 }
 
@@ -177,9 +177,9 @@ func (l *DefaultSkillLoader) loadProcessPlugin(ctx context.Context, skillPath st
 
 	// Create a process-based skill wrapper
 	processSkill := &ProcessSkill{
-		manifest:   manifest,
-		execPath:   execPath,
-		skillPath:  skillPath,
+		manifest:  manifest,
+		execPath:  execPath,
+		skillPath: skillPath,
 	}
 
 	logging.Sugar.Infow("Loaded process plugin skill", "skill", manifest.ID, "path", execPath)

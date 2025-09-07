@@ -166,20 +166,20 @@ func (s *STTClient) float32ToWAV(samples []float32, sampleRate int) ([]byte, err
 	var buf bytes.Buffer
 
 	// WAV header
-	buf.WriteString("RIFF")                                    // ChunkID
-	buf.Write([]byte{byte(fileSize), byte(fileSize >> 8), byte(fileSize >> 16), byte(fileSize >> 24)}) // ChunkSize
-	buf.WriteString("WAVE")                                    // Format
-	buf.WriteString("fmt ")                                    // Subchunk1ID
-	buf.Write([]byte{16, 0, 0, 0})                            // Subchunk1Size (16 for PCM)
-	buf.Write([]byte{3, 0})                                   // AudioFormat (3 = IEEE float)
-	buf.Write([]byte{1, 0})                                   // NumChannels (1 = mono)
+	buf.WriteString("RIFF")                                                                                    // ChunkID
+	buf.Write([]byte{byte(fileSize), byte(fileSize >> 8), byte(fileSize >> 16), byte(fileSize >> 24)})         // ChunkSize
+	buf.WriteString("WAVE")                                                                                    // Format
+	buf.WriteString("fmt ")                                                                                    // Subchunk1ID
+	buf.Write([]byte{16, 0, 0, 0})                                                                             // Subchunk1Size (16 for PCM)
+	buf.Write([]byte{3, 0})                                                                                    // AudioFormat (3 = IEEE float)
+	buf.Write([]byte{1, 0})                                                                                    // NumChannels (1 = mono)
 	buf.Write([]byte{byte(sampleRate), byte(sampleRate >> 8), byte(sampleRate >> 16), byte(sampleRate >> 24)}) // SampleRate
-	byteRate := sampleRate * 4 // SampleRate * NumChannels * BitsPerSample/8
-	buf.Write([]byte{byte(byteRate), byte(byteRate >> 8), byte(byteRate >> 16), byte(byteRate >> 24)}) // ByteRate
-	buf.Write([]byte{4, 0})                                   // BlockAlign (NumChannels * BitsPerSample/8)
-	buf.Write([]byte{32, 0})                                  // BitsPerSample (32 for float32)
-	buf.WriteString("data")                                   // Subchunk2ID
-	buf.Write([]byte{byte(dataSize), byte(dataSize >> 8), byte(dataSize >> 16), byte(dataSize >> 24)}) // Subchunk2Size
+	byteRate := sampleRate * 4                                                                                 // SampleRate * NumChannels * BitsPerSample/8
+	buf.Write([]byte{byte(byteRate), byte(byteRate >> 8), byte(byteRate >> 16), byte(byteRate >> 24)})         // ByteRate
+	buf.Write([]byte{4, 0})                                                                                    // BlockAlign (NumChannels * BitsPerSample/8)
+	buf.Write([]byte{32, 0})                                                                                   // BitsPerSample (32 for float32)
+	buf.WriteString("data")                                                                                    // Subchunk2ID
+	buf.Write([]byte{byte(dataSize), byte(dataSize >> 8), byte(dataSize >> 16), byte(dataSize >> 24)})         // Subchunk2Size
 
 	// Audio data (float32 samples as little-endian bytes)
 	for _, sample := range samples {

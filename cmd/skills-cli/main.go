@@ -47,40 +47,40 @@ type SkillInfo struct {
 }
 
 type SkillManifest struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Version     string   `json:"version"`
-	Description string   `json:"description"`
-	Author      string   `json:"author"`
-	License     string   `json:"license"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	Author      string `json:"author"`
+	License     string `json:"license"`
 }
 
 type SkillConfig struct {
-	SkillID     string                 `json:"skill_id"`
-	Name        string                 `json:"name"`
-	Version     string                 `json:"version"`
-	Config      map[string]interface{} `json:"config"`
-	Enabled     bool                   `json:"enabled"`
-	Timeout     string                 `json:"timeout"`
-	MaxRetries  int                    `json:"max_retries"`
+	SkillID    string                 `json:"skill_id"`
+	Name       string                 `json:"name"`
+	Version    string                 `json:"version"`
+	Config     map[string]interface{} `json:"config"`
+	Enabled    bool                   `json:"enabled"`
+	Timeout    string                 `json:"timeout"`
+	MaxRetries int                    `json:"max_retries"`
 }
 
 type SkillStatus struct {
-	State       string    `json:"state"`
-	Healthy     bool      `json:"healthy"`
-	LastError   string    `json:"last_error,omitempty"`
-	LastUsed    time.Time `json:"last_used"`
-	UsageCount  int64     `json:"usage_count"`
+	State      string    `json:"state"`
+	Healthy    bool      `json:"healthy"`
+	LastError  string    `json:"last_error,omitempty"`
+	LastUsed   time.Time `json:"last_used"`
+	UsageCount int64     `json:"usage_count"`
 }
 
 func main() {
 	var (
-		hubURL = flag.String("hub", defaultHubURL, "URL of the Loqa hub")
-		action = flag.String("action", "list", "Action to perform: list, load, unload, enable, disable, reload, info")
-		skillID = flag.String("skill", "", "Skill ID for actions")
+		hubURL    = flag.String("hub", defaultHubURL, "URL of the Loqa hub")
+		action    = flag.String("action", "list", "Action to perform: list, load, unload, enable, disable, reload, info")
+		skillID   = flag.String("skill", "", "Skill ID for actions")
 		skillPath = flag.String("path", "", "Path to skill directory for load action")
-		verbose = flag.Bool("v", false, "Verbose output")
-		format = flag.String("format", "table", "Output format: table, json")
+		verbose   = flag.Bool("v", false, "Verbose output")
+		format    = flag.String("format", "table", "Output format: table, json")
 	)
 	flag.Parse()
 

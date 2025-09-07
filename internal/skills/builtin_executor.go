@@ -27,10 +27,10 @@ import (
 
 // BuiltinExecutor handles loading and execution of built-in skills
 type BuiltinExecutor struct {
-	logger          *zap.Logger
-	skillRegistry   map[string]SkillFactory
-	loadedSkills    map[string]SkillPlugin
-	mu              sync.RWMutex
+	logger        *zap.Logger
+	skillRegistry map[string]SkillFactory
+	loadedSkills  map[string]SkillPlugin
+	mu            sync.RWMutex
 }
 
 // SkillFactory is a function that creates a new skill instance
@@ -49,7 +49,7 @@ func NewBuiltinExecutor(logger *zap.Logger) *BuiltinExecutor {
 func (e *BuiltinExecutor) RegisterSkill(skillID string, factory SkillFactory) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	e.skillRegistry[skillID] = factory
 	e.logger.Info("Registered built-in skill", zap.String("skill", skillID))
 }
@@ -58,26 +58,26 @@ func (e *BuiltinExecutor) RegisterSkill(skillID string, factory SkillFactory) {
 func (e *BuiltinExecutor) LoadSkill(manifest *SkillManifest, config *SkillConfig) (SkillPlugin, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	skillID := manifest.ID
-	
+
 	// Check if skill is already loaded
 	if skill, exists := e.loadedSkills[skillID]; exists {
 		return skill, nil
 	}
-	
+
 	// Find skill factory
 	factory, exists := e.skillRegistry[skillID]
 	if !exists {
 		return nil, fmt.Errorf("built-in skill %s not registered", skillID)
 	}
-	
+
 	// Create skill instance
 	skill := factory(e.logger)
-	
+
 	// Store loaded skill
 	e.loadedSkills[skillID] = skill
-	
+
 	return skill, nil
 }
 
@@ -85,7 +85,7 @@ func (e *BuiltinExecutor) LoadSkill(manifest *SkillManifest, config *SkillConfig
 func (e *BuiltinExecutor) UnloadSkill(skillID string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	
+
 	delete(e.loadedSkills, skillID)
 	return nil
 }
@@ -94,11 +94,11 @@ func (e *BuiltinExecutor) UnloadSkill(skillID string) error {
 func (e *BuiltinExecutor) ListLoadedSkills() []string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	
+
 	skills := make([]string, 0, len(e.loadedSkills))
 	for skillID := range e.loadedSkills {
 		skills = append(skills, skillID)
 	}
-	
+
 	return skills
 }

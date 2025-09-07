@@ -36,13 +36,13 @@ import (
 )
 
 var (
-	ErrSkillNotFound       = errors.New("skill not found")
-	ErrSkillAlreadyLoaded  = errors.New("skill already loaded")
-	ErrInvalidManifest     = errors.New("invalid skill manifest")
-	ErrPermissionDenied    = errors.New("permission denied")
-	ErrSkillInitFailed     = errors.New("skill initialization failed")
-	ErrNoSkillCanHandle    = errors.New("no skill can handle this intent")
-	ErrInvalidSkillID      = errors.New("invalid skill ID")
+	ErrSkillNotFound      = errors.New("skill not found")
+	ErrSkillAlreadyLoaded = errors.New("skill already loaded")
+	ErrInvalidManifest    = errors.New("invalid skill manifest")
+	ErrPermissionDenied   = errors.New("permission denied")
+	ErrSkillInitFailed    = errors.New("skill initialization failed")
+	ErrNoSkillCanHandle   = errors.New("no skill can handle this intent")
+	ErrInvalidSkillID     = errors.New("invalid skill ID")
 )
 
 // validateSkillID validates that a skill ID is safe for filesystem operations
@@ -51,45 +51,45 @@ func validateSkillID(skillID string) error {
 	if skillID == "" {
 		return ErrInvalidSkillID
 	}
-	
+
 	// Check for path traversal attempts
 	if strings.Contains(skillID, "..") || strings.Contains(skillID, "/") || strings.Contains(skillID, "\\") {
 		return ErrInvalidSkillID
 	}
-	
+
 	// Only allow alphanumeric characters, hyphens, and underscores
 	validSkillID := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 	if !validSkillID.MatchString(skillID) {
 		return ErrInvalidSkillID
 	}
-	
+
 	return nil
 }
 
 // SkillManagerConfig holds configuration for the skill manager
 type SkillManagerConfig struct {
-	SkillsDir      string        `json:"skills_dir"`
-	AutoLoad       bool          `json:"auto_load"`
-	MaxSkills      int           `json:"max_skills"`
-	LoadTimeout    time.Duration `json:"load_timeout"`
-	DefaultTrust   TrustLevel    `json:"default_trust"`
-	AllowedModes   []SandboxMode `json:"allowed_sandbox_modes"`
-	ConfigStore    string        `json:"config_store"`
+	SkillsDir    string        `json:"skills_dir"`
+	AutoLoad     bool          `json:"auto_load"`
+	MaxSkills    int           `json:"max_skills"`
+	LoadTimeout  time.Duration `json:"load_timeout"`
+	DefaultTrust TrustLevel    `json:"default_trust"`
+	AllowedModes []SandboxMode `json:"allowed_sandbox_modes"`
+	ConfigStore  string        `json:"config_store"`
 }
 
 // SkillManager manages the lifecycle of skills
 type SkillManager struct {
-	config  SkillManagerConfig
-	skills  map[string]*LoadedSkill
-	mutex   sync.RWMutex
-	loader  SkillLoader
+	config SkillManagerConfig
+	skills map[string]*LoadedSkill
+	mutex  sync.RWMutex
+	loader SkillLoader
 }
 
 // LoadedSkill wraps a SkillPlugin with additional runtime information
 type LoadedSkill struct {
-	Plugin   SkillPlugin
-	Info     *SkillInfo
-	mutex    sync.RWMutex
+	Plugin SkillPlugin
+	Info   *SkillInfo
+	mutex  sync.RWMutex
 }
 
 // SkillLoader defines the interface for loading skills
@@ -118,7 +118,7 @@ func NewSkillManager(config SkillManagerConfig, loader SkillLoader) *SkillManage
 // Start initializes the skill manager and loads skills
 func (sm *SkillManager) Start(ctx context.Context) error {
 	logging.Sugar.Infow("Starting skill manager", "skills_dir", sm.config.SkillsDir)
-	
+
 	if sm.config.AutoLoad {
 		if err := sm.loadAllSkills(ctx); err != nil {
 			logging.Sugar.Warnw("Failed to load some skills during startup", "error", err)
@@ -222,9 +222,9 @@ func (sm *SkillManager) LoadSkill(ctx context.Context, skillPath string) error {
 
 	sm.skills[manifest.ID] = loadedSkill
 
-	logging.Sugar.Infow("Skill loaded successfully", 
-		"skill_id", manifest.ID, 
-		"name", manifest.Name, 
+	logging.Sugar.Infow("Skill loaded successfully",
+		"skill_id", manifest.ID,
+		"name", manifest.Name,
 		"version", manifest.Version)
 
 	return nil
@@ -273,10 +273,10 @@ func (sm *SkillManager) HandleIntent(ctx context.Context, intent *VoiceIntent) (
 	var candidates []*LoadedSkill
 	for _, loadedSkill := range sm.skills {
 		loadedSkill.mutex.RLock()
-		if loadedSkill.Info.Status.State == SkillStateReady && 
-		   loadedSkill.Info.Status.Healthy &&
-		   loadedSkill.Info.Config.Enabled &&
-		   loadedSkill.Plugin.CanHandle(*intent) {
+		if loadedSkill.Info.Status.State == SkillStateReady &&
+			loadedSkill.Info.Status.Healthy &&
+			loadedSkill.Info.Config.Enabled &&
+			loadedSkill.Plugin.CanHandle(*intent) {
 			candidates = append(candidates, loadedSkill)
 		}
 		loadedSkill.mutex.RUnlock()
@@ -302,9 +302,9 @@ func (sm *SkillManager) HandleIntent(ctx context.Context, intent *VoiceIntent) (
 			candidate.Info.ErrorCount++
 			candidate.Info.LastError = err.Error()
 			candidate.mutex.Unlock()
-			
-			logging.Sugar.Warnw("Skill execution failed", 
-				"skill", candidate.Info.Manifest.ID, 
+
+			logging.Sugar.Warnw("Skill execution failed",
+				"skill", candidate.Info.Manifest.ID,
 				"error", err)
 			continue
 		}
@@ -444,12 +444,12 @@ func (sm *SkillManager) loadManifest(skillPath string) (*SkillManifest, error) {
 	if skillPath == "" {
 		return nil, fmt.Errorf("empty skill path")
 	}
-	
+
 	// Check for path traversal attempts
 	if strings.Contains(skillPath, "..") {
 		return nil, fmt.Errorf("invalid skill path: path traversal detected")
 	}
-	
+
 	manifestPath := filepath.Join(skillPath, "skill.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -501,7 +501,7 @@ func (sm *SkillManager) loadSkillConfig(skillID string) (*SkillConfig, error) {
 	if err := validateSkillID(skillID); err != nil {
 		return nil, fmt.Errorf("invalid skill ID: %w", err)
 	}
-	
+
 	configPath := filepath.Join(sm.config.ConfigStore, skillID+".json")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -518,7 +518,7 @@ func (sm *SkillManager) saveSkillConfig(skillID string, config *SkillConfig) err
 	if err := validateSkillID(skillID); err != nil {
 		return fmt.Errorf("invalid skill ID: %w", err)
 	}
-	
+
 	if sm.config.ConfigStore == "" {
 		return nil
 	}

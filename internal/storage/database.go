@@ -102,13 +102,13 @@ func ensureDir(dir string) error {
 // configureSQLite sets optimal SQLite settings for our use case
 func configureSQLite(db *sql.DB) error {
 	pragmas := []string{
-		"PRAGMA journal_mode = WAL",           // Write-Ahead Logging for better concurrency
-		"PRAGMA synchronous = NORMAL",         // Good balance of safety and performance  
-		"PRAGMA cache_size = 10000",           // 10MB cache
-		"PRAGMA temp_store = memory",          // Store temp tables in memory
-		"PRAGMA mmap_size = 268435456",        // 256MB memory-mapped I/O
-		"PRAGMA foreign_keys = ON",            // Enable foreign key constraints
-		"PRAGMA busy_timeout = 5000",          // 5 second timeout for locks
+		"PRAGMA journal_mode = WAL",    // Write-Ahead Logging for better concurrency
+		"PRAGMA synchronous = NORMAL",  // Good balance of safety and performance
+		"PRAGMA cache_size = 10000",    // 10MB cache
+		"PRAGMA temp_store = memory",   // Store temp tables in memory
+		"PRAGMA mmap_size = 268435456", // 256MB memory-mapped I/O
+		"PRAGMA foreign_keys = ON",     // Enable foreign key constraints
+		"PRAGMA busy_timeout = 5000",   // 5 second timeout for locks
 	}
 
 	for _, pragma := range pragmas {
@@ -172,7 +172,7 @@ func (d *Database) Vacuum() error {
 	if err != nil {
 		return fmt.Errorf("failed to vacuum database: %w", err)
 	}
-	
+
 	log.Println("✅ Database vacuumed successfully")
 	return nil
 }
@@ -183,7 +183,7 @@ func (d *Database) Checkpoint() error {
 	if err != nil {
 		return fmt.Errorf("failed to checkpoint database: %w", err)
 	}
-	
+
 	log.Println("✅ Database checkpoint completed")
 	return nil
 }

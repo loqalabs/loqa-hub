@@ -77,7 +77,7 @@ func (cp *CommandParser) ParseCommand(transcription string) (*Command, error) {
 	}
 
 	prompt := cp.buildPrompt(transcription)
-	
+
 	response, err := cp.queryOllama(prompt)
 	if err != nil {
 		log.Printf("❌ Error querying Ollama: %v", err)
@@ -172,17 +172,17 @@ func (cp *CommandParser) queryOllama(prompt string) (string, error) {
 func (cp *CommandParser) parseResponse(response string) (*Command, error) {
 	// Clean up the response - sometimes LLMs include extra text
 	response = strings.TrimSpace(response)
-	
+
 	// Find JSON object in the response
 	start := strings.Index(response, "{")
 	end := strings.LastIndex(response, "}")
-	
+
 	if start == -1 || end == -1 || start >= end {
 		return nil, fmt.Errorf("no valid JSON found in response")
 	}
-	
+
 	jsonStr := response[start : end+1]
-	
+
 	var command Command
 	if err := json.Unmarshal([]byte(jsonStr), &command); err != nil {
 		return nil, fmt.Errorf("error unmarshaling command JSON: %w", err)
