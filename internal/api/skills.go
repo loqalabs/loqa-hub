@@ -46,18 +46,18 @@ func safeExtractSkillID(urlPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Use the cleaned path
 	cleanPath := u.Path
-	
+
 	// Extract skill ID using the existing logic but on cleaned path
 	skillID := extractSkillID(cleanPath)
-	
+
 	// Validate extracted skill ID
 	if err := security.ValidateSkillID(skillID); err != nil {
 		return "", err
 	}
-	
+
 	return skillID, nil
 }
 
@@ -68,22 +68,22 @@ func safeExtractSkillIDAndAction(urlPath string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	
+
 	// Use the cleaned path
 	cleanPath := u.Path
-	
+
 	// Extract skill ID and action using existing logic
 	skillID, action := extractSkillIDAndAction(cleanPath)
-	
+
 	// Validate extracted values
 	if err := security.ValidateSkillID(skillID); err != nil {
 		return "", "", err
 	}
-	
+
 	if !isValidAction(action) {
 		return "", "", skills.ErrInvalidSkillID // reuse this error for simplicity
 	}
-	
+
 	return skillID, action, nil
 }
 

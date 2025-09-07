@@ -37,7 +37,6 @@ const (
 	defaultHubURL = "http://localhost:3000"
 )
 
-
 type SkillInfo struct {
 	Manifest   SkillManifest `json:"manifest"`
 	Config     SkillConfig   `json:"config"`

@@ -27,7 +27,7 @@ import (
 var (
 	// ErrInvalidSkillID is returned when a skill ID format is invalid
 	ErrInvalidSkillID = errors.New("invalid skill ID")
-	
+
 	// skillIDPattern validates skill IDs to only allow safe characters
 	skillIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 )
@@ -41,23 +41,23 @@ func SanitizeLogInput(input string) string {
 }
 
 // ValidateSkillID ensures that a skill ID contains only safe characters
-// and prevents path traversal attacks. Only allows alphanumeric ASCII 
+// and prevents path traversal attacks. Only allows alphanumeric ASCII
 // characters, dashes, and underscores.
 func ValidateSkillID(skillID string) error {
 	// Check for empty skill ID
 	if skillID == "" {
 		return ErrInvalidSkillID
 	}
-	
+
 	// Check for path separators or parent directory references (CodeQL recommendation)
 	if strings.Contains(skillID, "/") || strings.Contains(skillID, "\\") || strings.Contains(skillID, "..") {
 		return ErrInvalidSkillID
 	}
-	
+
 	// Validate against allowed character pattern
 	if !skillIDPattern.MatchString(skillID) {
 		return ErrInvalidSkillID
 	}
-	
+
 	return nil
 }

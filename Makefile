@@ -56,6 +56,9 @@ install-tools: ## Install development tools
 # Pre-commit checks (run before committing)
 pre-commit: fmt vet test lint-fast ## Run all pre-commit checks
 
+# Complete quality validation (run before pushing)
+quality-check: fmt vet test lint ## Run comprehensive quality checks
+
 # Help
 help: ## Show this help message
 	@echo 'Usage: make [target]'

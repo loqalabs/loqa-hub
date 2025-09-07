@@ -32,7 +32,6 @@ linters:
     - unparam
     
   disable:
-    - exportloopref  # deprecated
     - tenv           # deprecated
 
 linters-settings:

@@ -51,30 +51,29 @@ func (sm *SkillManager) safeConfigPath(skillID string) (string, error) {
 	if err := security.ValidateSkillID(skillID); err != nil {
 		return "", fmt.Errorf("invalid skill ID: %w", err)
 	}
-	
+
 	// Get absolute path of safe directory first
 	safeDir, err := filepath.Abs(sm.config.ConfigStore)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve config store path: %w", err)
 	}
-	
+
 	// Construct path by joining safe directory with user input
 	configPath := filepath.Join(safeDir, skillID+".json")
-	
+
 	// Get absolute path of the result (CodeQL recommended pattern)
 	absConfigPath, err := filepath.Abs(configPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve config path: %w", err)
 	}
-	
+
 	// Ensure the resolved path is within the safe directory (CodeQL recommended check)
 	if !strings.HasPrefix(absConfigPath, safeDir+string(filepath.Separator)) {
 		return "", fmt.Errorf("invalid file path: path traversal detected")
 	}
-	
+
 	return absConfigPath, nil
 }
-
 
 // SkillManagerConfig holds configuration for the skill manager
 type SkillManagerConfig struct {
@@ -168,7 +167,7 @@ func (sm *SkillManager) LoadSkill(ctx context.Context, skillPath string) error {
 	if skillPath == "" {
 		return fmt.Errorf("skill path cannot be empty")
 	}
-	
+
 	// Additional path validation - ensure no path traversal attempts
 	if strings.Contains(skillPath, "..") || strings.Contains(skillPath, "\\") {
 		return fmt.Errorf("invalid skill path: path traversal detected")
@@ -523,7 +522,7 @@ func (sm *SkillManager) loadSkillConfig(skillID string) (*SkillConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, err
@@ -550,7 +549,7 @@ func (sm *SkillManager) saveSkillConfig(skillID string, config *SkillConfig) err
 	if err != nil {
 		return err
 	}
-	
+
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err

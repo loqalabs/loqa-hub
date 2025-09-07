@@ -33,7 +33,6 @@ type VoiceEventsStore struct {
 	db *Database
 }
 
-
 // NewVoiceEventsStore creates a new voice events store
 func NewVoiceEventsStore(db *Database) *VoiceEventsStore {
 	return &VoiceEventsStore{db: db}
@@ -314,16 +313,16 @@ func (s *VoiceEventsStore) scanVoiceEvent(scanner interface{}) (*events.VoiceEve
 // validateSortBy ensures only safe column names are used for sorting
 func validateSortBy(sortBy string) string {
 	validColumns := map[string]bool{
-		"timestamp":        true,
-		"confidence":       true,
-		"processing_time":  true,
+		"timestamp":          true,
+		"confidence":         true,
+		"processing_time":    true,
 		"processing_time_ms": true,
-		"uuid":            true,
-		"relay_id":        true,
-		"intent":          true,
-		"success":         true,
-		"audio_duration":  true,
-		"sample_rate":     true,
+		"uuid":               true,
+		"relay_id":           true,
+		"intent":             true,
+		"success":            true,
+		"audio_duration":     true,
+		"sample_rate":        true,
 	}
 
 	if sortBy != "" && validColumns[sortBy] {
