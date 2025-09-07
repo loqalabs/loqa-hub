@@ -58,28 +58,34 @@ func sanitizeLogInput(input string) string {
 
 // safeConfigPath constructs a safe config file path within the config store
 func (sm *SkillManager) safeConfigPath(skillID string) (string, error) {
-	// Validate skill ID first
-	if err := validateSkillID(skillID); err != nil {
-		return "", fmt.Errorf("invalid skill ID: %w", err)
+	// First validate that skillID contains no path separators or ".." sequences (CodeQL recommendation)
+	if strings.Contains(skillID, "/") || strings.Contains(skillID, "\\") || strings.Contains(skillID, "..") {
+		return "", fmt.Errorf("invalid skill ID: contains path separators or parent directory references")
 	}
 	
-	// Construct base path
-	configPath := filepath.Join(sm.config.ConfigStore, skillID+".json")
+	// Additional regex validation for safe characters
+	if err := validateSkillID(skillID); err != nil {
+		return "", fmt.Errorf("invalid skill ID format: %w", err)
+	}
 	
-	// Validate that the resolved path is within the expected directory
+	// Get absolute path of safe directory first
+	safeDir, err := filepath.Abs(sm.config.ConfigStore)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve config store path: %w", err)
+	}
+	
+	// Construct path by joining safe directory with user input
+	configPath := filepath.Join(safeDir, skillID+".json")
+	
+	// Get absolute path of the result (CodeQL recommended pattern)
 	absConfigPath, err := filepath.Abs(configPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve config path: %w", err)
 	}
 	
-	absConfigStore, err := filepath.Abs(sm.config.ConfigStore)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve config store path: %w", err)
-	}
-	
-	// Ensure the config file path is within the config store directory
-	if !strings.HasPrefix(absConfigPath, absConfigStore+string(filepath.Separator)) {
-		return "", fmt.Errorf("invalid config path: path traversal detected")
+	// Ensure the resolved path is within the safe directory (CodeQL recommended check)
+	if !strings.HasPrefix(absConfigPath, safeDir+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid file path: path traversal detected")
 	}
 	
 	return configPath, nil
