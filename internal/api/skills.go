@@ -99,7 +99,7 @@ func (h *SkillsHandler) HandleSkillAction(w http.ResponseWriter, r *http.Request
 // listSkills returns all loaded skills
 func (h *SkillsHandler) listSkills(w http.ResponseWriter, r *http.Request) {
 	skills := h.skillManager.ListSkills()
-	
+
 	response := map[string]interface{}{
 		"skills": skills,
 		"count":  len(skills),
