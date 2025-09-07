@@ -22,10 +22,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/loqalabs/loqa-hub/internal/events"
+	"github.com/loqalabs/loqa-hub/internal/security"
 )
 
 // VoiceEventsStore handles database operations for voice events
@@ -33,12 +33,6 @@ type VoiceEventsStore struct {
 	db *Database
 }
 
-// sanitizeLogInput removes newline characters to prevent log injection
-func sanitizeLogInput(input string) string {
-	sanitized := strings.ReplaceAll(input, "\n", "")
-	sanitized = strings.ReplaceAll(sanitized, "\r", "")
-	return sanitized
-}
 
 // NewVoiceEventsStore creates a new voice events store
 func NewVoiceEventsStore(db *Database) *VoiceEventsStore {
@@ -81,7 +75,7 @@ func (s *VoiceEventsStore) Insert(event *events.VoiceEvent) error {
 	}
 
 	log.Printf("📝 Stored voice event: %s (RelayID: %s, Intent: %s)",
-		sanitizeLogInput(event.UUID), sanitizeLogInput(event.RelayID), sanitizeLogInput(event.Intent))
+		security.SanitizeLogInput(event.UUID), security.SanitizeLogInput(event.RelayID), security.SanitizeLogInput(event.Intent))
 	return nil
 }
 
@@ -198,7 +192,7 @@ func (s *VoiceEventsStore) Delete(uuid string) error {
 		return fmt.Errorf("voice event not found: %s", uuid)
 	}
 
-	log.Printf("🗑️  Deleted voice event: %s", sanitizeLogInput(uuid))
+	log.Printf("🗑️  Deleted voice event: %s", security.SanitizeLogInput(uuid))
 	return nil
 }
 

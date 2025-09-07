@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	"github.com/loqalabs/loqa-hub/internal/logging"
+	"github.com/loqalabs/loqa-hub/internal/security"
 )
 
 // SkillsRootDir defines the root directory for all skills
@@ -148,7 +149,7 @@ func (l *DefaultSkillLoader) loadGoPlugin(ctx context.Context, skillPath string,
 
 	// Create the skill instance
 	skill := newSkillFunc()
-	logging.Sugar.Infow("Loaded Go plugin skill", "skill", sanitizeLogInput(manifest.ID), "path", pluginPath)
+	logging.Sugar.Infow("Loaded Go plugin skill", "skill", security.SanitizeLogInput(manifest.ID), "path", pluginPath)
 
 	return skill, nil
 }
@@ -182,7 +183,7 @@ func (l *DefaultSkillLoader) loadProcessPlugin(ctx context.Context, skillPath st
 		skillPath: skillPath,
 	}
 
-	logging.Sugar.Infow("Loaded process plugin skill", "skill", sanitizeLogInput(manifest.ID), "path", execPath)
+	logging.Sugar.Infow("Loaded process plugin skill", "skill", security.SanitizeLogInput(manifest.ID), "path", execPath)
 	return processSkill, nil
 }
 
