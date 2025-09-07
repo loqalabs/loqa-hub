@@ -34,7 +34,16 @@
     "scope_boundaries": "Ask for clarification when scope is unclear",
     "technical_approach": "Propose options when multiple paths exist", 
     "dependencies": "Stop and ask when blockers are found",
-    "testing": "Include appropriate test coverage for changes"
+    "testing": {
+      "coverage_requirements": "Maintain high test coverage for all code changes",
+      "unit_tests": "Write unit tests for all new functions, methods, and business logic",
+      "integration_tests": "Add integration tests for API endpoints and service interactions", 
+      "edge_cases": "Test error conditions, boundary values, and failure scenarios",
+      "regression_tests": "Add tests that prevent reoccurrence of fixed bugs",
+      "test_before_commit": "Run existing tests before committing to ensure no breakage",
+      "microservice_testing": "Test service-to-service communication and gRPC interfaces",
+      "security_testing": "Include security-focused tests for authentication and authorization"
+    }
   },
   "repository_context": {
     "service_role": "Central hub service - orchestrates communication between all microservices",
