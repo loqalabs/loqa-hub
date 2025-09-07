@@ -63,7 +63,7 @@ type KokoroClient struct {
 // NewKokoroClient creates a new Kokoro TTS client
 func NewKokoroClient(cfg config.TTSConfig) (*KokoroClient, error) {
 	if cfg.URL == "" {
-		return nil, fmt.Errorf("Kokoro TTS URL cannot be empty")
+		return nil, fmt.Errorf("kokoro TTS URL cannot be empty")
 	}
 
 	client := &http.Client{
