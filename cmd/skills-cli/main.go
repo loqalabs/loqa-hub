@@ -35,6 +35,13 @@ const (
 	defaultHubURL = "http://localhost:3000"
 )
 
+// sanitizeLogInput removes newline characters to prevent log injection
+func sanitizeLogInput(input string) string {
+	sanitized := strings.ReplaceAll(input, "\n", "")
+	sanitized = strings.ReplaceAll(sanitized, "\r", "")
+	return sanitized
+}
+
 type SkillInfo struct {
 	Manifest   SkillManifest `json:"manifest"`
 	Config     SkillConfig   `json:"config"`
@@ -213,9 +220,9 @@ func (c *SkillCLI) listSkills() error {
 		}
 
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
-			skill.Manifest.ID,
-			skill.Manifest.Name,
-			skill.Manifest.Version,
+			sanitizeLogInput(skill.Manifest.ID),
+			sanitizeLogInput(skill.Manifest.Name),
+			sanitizeLogInput(skill.Manifest.Version),
 			skill.Status.State,
 			enabled,
 			skill.ErrorCount,
@@ -257,12 +264,12 @@ func (c *SkillCLI) getSkill(skillID string) error {
 
 	// Detailed format
 	fmt.Printf("Skill Information:\n")
-	fmt.Printf("  ID:          %s\n", skill.Manifest.ID)
-	fmt.Printf("  Name:        %s\n", skill.Manifest.Name)
-	fmt.Printf("  Version:     %s\n", skill.Manifest.Version)
-	fmt.Printf("  Description: %s\n", skill.Manifest.Description)
-	fmt.Printf("  Author:      %s\n", skill.Manifest.Author)
-	fmt.Printf("  License:     %s\n", skill.Manifest.License)
+	fmt.Printf("  ID:          %s\n", sanitizeLogInput(skill.Manifest.ID))
+	fmt.Printf("  Name:        %s\n", sanitizeLogInput(skill.Manifest.Name))
+	fmt.Printf("  Version:     %s\n", sanitizeLogInput(skill.Manifest.Version))
+	fmt.Printf("  Description: %s\n", sanitizeLogInput(skill.Manifest.Description))
+	fmt.Printf("  Author:      %s\n", sanitizeLogInput(skill.Manifest.Author))
+	fmt.Printf("  License:     %s\n", sanitizeLogInput(skill.Manifest.License))
 	fmt.Printf("\nStatus:\n")
 	fmt.Printf("  State:       %s\n", skill.Status.State)
 	fmt.Printf("  Healthy:     %s\n", formatBool(skill.Status.Healthy))
@@ -276,18 +283,18 @@ func (c *SkillCLI) getSkill(skillID string) error {
 	fmt.Printf("  Error Count: %d\n", skill.ErrorCount)
 
 	if skill.LastError != "" {
-		fmt.Printf("  Last Error:  %s\n", skill.LastError)
+		fmt.Printf("  Last Error:  %s\n", sanitizeLogInput(skill.LastError))
 	}
 
 	fmt.Printf("\nConfiguration:\n")
 	fmt.Printf("  Timeout:     %s\n", skill.Config.Timeout)
 	fmt.Printf("  Max Retries: %d\n", skill.Config.MaxRetries)
-	fmt.Printf("  Plugin Path: %s\n", skill.PluginPath)
+	fmt.Printf("  Plugin Path: %s\n", sanitizeLogInput(skill.PluginPath))
 
 	if len(skill.Config.Config) > 0 {
 		fmt.Printf("\nCustom Config:\n")
 		for key, value := range skill.Config.Config {
-			fmt.Printf("  %s: %v\n", key, value)
+			fmt.Printf("  %s: %v\n", sanitizeLogInput(key), value)
 		}
 	}
 
@@ -318,7 +325,7 @@ func (c *SkillCLI) loadSkill(skillPath string) error {
 		return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	fmt.Printf("Skill loaded successfully from %s\n", skillPath)
+	fmt.Printf("Skill loaded successfully from %s\n", sanitizeLogInput(skillPath))
 	return nil
 }
 
@@ -341,7 +348,7 @@ func (c *SkillCLI) unloadSkill(skillID string) error {
 		return fmt.Errorf("API returned status %d", resp.StatusCode)
 	}
 
-	fmt.Printf("Skill %s unloaded successfully\n", skillID)
+	fmt.Printf("Skill %s unloaded successfully\n", sanitizeLogInput(skillID))
 	return nil
 }
 
@@ -372,7 +379,7 @@ func (c *SkillCLI) skillAction(skillID, action string) error {
 		return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	fmt.Printf("Skill %s %sd successfully\n", skillID, action)
+	fmt.Printf("Skill %s %sd successfully\n", sanitizeLogInput(skillID), action)
 	return nil
 }
 
