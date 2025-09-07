@@ -51,7 +51,7 @@ This security policy applies to:
 
 - **loqa** - Main orchestration and documentation repository
 - **loqa-hub** - Central hub service for voice processing
-- **loqa-device-service** - Device control and command execution service  
+- **loqa-device-service** - Device control and command execution service (archived Sept 2025)  
 - **loqa-proto** - Shared protocol definitions and generated bindings
 - **loqa-relay** - Audio capture device implementation (test client and firmware)
 - **loqa-skills** - Voice assistant skills and integrations
