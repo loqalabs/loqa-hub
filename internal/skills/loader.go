@@ -118,7 +118,7 @@ func (l *DefaultSkillLoader) UnloadSkill(ctx context.Context, plugin SkillPlugin
 }
 
 // loadGoPlugin loads a Go plugin (.so file)
-func (l *DefaultSkillLoader) loadGoPlugin(ctx context.Context, skillPath string, manifest *SkillManifest) (SkillPlugin, error) {
+func (l *DefaultSkillLoader) loadGoPlugin(_ context.Context, skillPath string, manifest *SkillManifest) (SkillPlugin, error) {
 	// Look for a .so file in the skill directory
 	pluginPath := filepath.Join(skillPath, "skill.so")
 	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
@@ -155,7 +155,7 @@ func (l *DefaultSkillLoader) loadGoPlugin(ctx context.Context, skillPath string,
 }
 
 // loadProcessPlugin loads a skill as a separate process
-func (l *DefaultSkillLoader) loadProcessPlugin(ctx context.Context, skillPath string, manifest *SkillManifest) (SkillPlugin, error) {
+func (l *DefaultSkillLoader) loadProcessPlugin(_ context.Context, skillPath string, manifest *SkillManifest) (SkillPlugin, error) {
 	// Look for an executable in the skill directory
 	var execPath string
 	candidates := []string{

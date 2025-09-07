@@ -64,5 +64,13 @@ issues:
       linters:
         - errcheck  # main.go often has unchecked errors that are OK
         
+    # Exclude specific unparam issues that are intentional for API consistency
+    - text: "rollbackCommands.*result 0.*is always nil"
+      linters:
+        - unparam
+    - text: "float32ToWAV.*result 1.*is always nil"
+      linters:
+        - unparam
+        
   max-issues-per-linter: 0
   max-same-issues: 0

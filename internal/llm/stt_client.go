@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"mime/multipart"
 	"net/http"
@@ -64,7 +65,11 @@ func (s *STTClient) healthCheck() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to STT service at %s: %w", s.baseURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("STT service health check failed with status: %d", resp.StatusCode)
@@ -113,13 +118,15 @@ func (s *STTClient) Transcribe(audioData []float32, sampleRate int) (string, err
 	}
 
 	// Add optional parameters
-	writer.WriteField("model", "tiny") // Use the model loaded in STT service
-	writer.WriteField("language", "")  // Auto-detect
-	writer.WriteField("temperature", "0.0")
-	writer.WriteField("response_format", "json")
+	_ = writer.WriteField("model", "tiny") // Use the model loaded in STT service
+	_ = writer.WriteField("language", "")  // Auto-detect
+	_ = writer.WriteField("temperature", "0.0")
+	_ = writer.WriteField("response_format", "json")
 
 	contentType := writer.FormDataContentType()
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return "", fmt.Errorf("failed to close multipart writer: %w", err)
+	}
 
 	// Make the request
 	req, err := http.NewRequest("POST", s.baseURL+"/v1/audio/transcriptions", &requestBody)
@@ -133,7 +140,11 @@ func (s *STTClient) Transcribe(audioData []float32, sampleRate int) (string, err
 	if err != nil {
 		return "", fmt.Errorf("transcription HTTP request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

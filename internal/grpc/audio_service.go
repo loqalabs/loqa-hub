@@ -20,6 +20,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -203,7 +204,7 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 	for {
 		// Receive audio chunk from relay
 		chunk, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			logging.Sugar.Info("🎙️  Hub: Audio stream ended")
 			return nil
 		}
@@ -547,7 +548,9 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 
 					// Close the audio stream
 					if closer, ok := ttsResult.Audio.(io.Closer); ok {
-						closer.Close()
+						if err := closer.Close(); err != nil {
+							logging.LogError(err, "Failed to close TTS audio stream")
+						}
 					}
 				}
 			}

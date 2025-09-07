@@ -63,7 +63,7 @@ func NewDatabase(config DatabaseConfig) (*Database, error) {
 
 	// Configure SQLite for optimal performance
 	if err := configureSQLite(db); err != nil {
-		db.Close()
+		_ = db.Close() // Best effort cleanup
 		return nil, fmt.Errorf("failed to configure SQLite: %w", err)
 	}
 
@@ -74,7 +74,7 @@ func NewDatabase(config DatabaseConfig) (*Database, error) {
 
 	// Run migrations
 	if err := database.migrate(); err != nil {
-		db.Close()
+		_ = db.Close() // Best effort cleanup
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
 

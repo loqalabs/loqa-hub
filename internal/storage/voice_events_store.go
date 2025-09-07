@@ -20,6 +20,7 @@ package storage
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -100,7 +101,11 @@ func (s *VoiceEventsStore) List(options ListOptions) ([]*events.VoiceEvent, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to query voice events: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Warning: failed to close rows: %v", err)
+		}
+	}()
 
 	var eventsList []*events.VoiceEvent
 	for rows.Next() {
@@ -161,7 +166,11 @@ func (s *VoiceEventsStore) GetByAudioHash(audioHash string) ([]*events.VoiceEven
 	if err != nil {
 		return nil, fmt.Errorf("failed to query by audio hash: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Warning: failed to close rows: %v", err)
+		}
+	}()
 
 	var eventsList []*events.VoiceEvent
 	for rows.Next() {
@@ -170,6 +179,10 @@ func (s *VoiceEventsStore) GetByAudioHash(audioHash string) ([]*events.VoiceEven
 			return nil, fmt.Errorf("failed to scan voice event: %w", err)
 		}
 		eventsList = append(eventsList, event)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating voice events: %w", err)
 	}
 
 	return eventsList, nil
@@ -296,7 +309,7 @@ func (s *VoiceEventsStore) scanVoiceEvent(scanner interface{}) (*events.VoiceEve
 	)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("voice event not found")
 		}
 		return nil, err

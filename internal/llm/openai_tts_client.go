@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -187,7 +188,9 @@ func (c *OpenAITTSClient) Synthesize(text string, options *TTSOptions) (*TTSResu
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
 		if logging.Logger != nil {
 			logging.LogWarn("TTS request failed",
 				zap.Int("status_code", resp.StatusCode),
@@ -243,7 +246,11 @@ func (c *OpenAITTSClient) GetAvailableVoices() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch voices: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("voices request failed with status %d", resp.StatusCode)
@@ -291,7 +298,11 @@ func (c *OpenAITTSClient) testConnection() error {
 	if err != nil {
 		return fmt.Errorf("connection test failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("service health check failed with status %d", resp.StatusCode)

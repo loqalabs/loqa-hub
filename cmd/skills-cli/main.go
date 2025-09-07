@@ -177,7 +177,11 @@ func (c *SkillCLI) listSkills() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to hub: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("API returned status %d", resp.StatusCode)
@@ -237,7 +241,11 @@ func (c *SkillCLI) getSkill(skillID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to hub: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return fmt.Errorf("skill %s not found", skillID)
@@ -310,7 +318,11 @@ func (c *SkillCLI) loadSkill(skillPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to hub: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	if resp.StatusCode == http.StatusConflict {
 		return fmt.Errorf("skill already loaded")
@@ -334,7 +346,11 @@ func (c *SkillCLI) unloadSkill(skillID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to hub: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return fmt.Errorf("skill %s not found", skillID)
@@ -364,7 +380,11 @@ func (c *SkillCLI) skillAction(skillID, action string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to hub: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return fmt.Errorf("skill %s not found", skillID)

@@ -91,7 +91,11 @@ func InitializeWithConfig(config LogConfig) error {
 // Sync flushes any buffered log entries
 func Sync() {
 	if Logger != nil {
-		Logger.Sync()
+		if err := Logger.Sync(); err != nil {
+			// Logger.Sync() can fail on some systems, especially in tests
+			// This is usually not critical, so we just ignore the error
+			_ = err
+		}
 	}
 }
 

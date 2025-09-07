@@ -144,5 +144,7 @@ func (s *Server) routes() {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	log.Println("Health check received")
-	fmt.Fprintln(w, "ok")
+	if _, err := fmt.Fprintln(w, "ok"); err != nil {
+		log.Printf("Failed to write health check response: %v", err)
+	}
 }

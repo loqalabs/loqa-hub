@@ -20,6 +20,8 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -167,7 +169,7 @@ func (h *SkillsHandler) HandleSkillAction(w http.ResponseWriter, r *http.Request
 }
 
 // listSkills returns all loaded skills
-func (h *SkillsHandler) listSkills(w http.ResponseWriter, r *http.Request) {
+func (h *SkillsHandler) listSkills(w http.ResponseWriter, _ *http.Request) {
 	skills := h.skillManager.ListSkills()
 
 	response := map[string]interface{}{
@@ -179,10 +181,10 @@ func (h *SkillsHandler) listSkills(w http.ResponseWriter, r *http.Request) {
 }
 
 // getSkill returns information about a specific skill
-func (h *SkillsHandler) getSkill(w http.ResponseWriter, r *http.Request, skillID string) {
+func (h *SkillsHandler) getSkill(w http.ResponseWriter, _ *http.Request, skillID string) {
 	skillInfo, err := h.skillManager.GetSkill(skillID)
 	if err != nil {
-		if err == skills.ErrSkillNotFound {
+		if errors.Is(err, skills.ErrSkillNotFound) {
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
@@ -211,7 +213,7 @@ func (h *SkillsHandler) loadSkill(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.skillManager.LoadSkill(r.Context(), request.SkillPath); err != nil {
-		if err == skills.ErrSkillAlreadyLoaded {
+		if errors.Is(err, skills.ErrSkillAlreadyLoaded) {
 			writeError(w, http.StatusConflict, "skill already loaded")
 			return
 		}
@@ -229,7 +231,7 @@ func (h *SkillsHandler) loadSkill(w http.ResponseWriter, r *http.Request) {
 // unloadSkill unloads an existing skill
 func (h *SkillsHandler) unloadSkill(w http.ResponseWriter, r *http.Request, skillID string) {
 	if err := h.skillManager.UnloadSkill(r.Context(), skillID); err != nil {
-		if err == skills.ErrSkillNotFound {
+		if errors.Is(err, skills.ErrSkillNotFound) {
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
@@ -247,7 +249,7 @@ func (h *SkillsHandler) unloadSkill(w http.ResponseWriter, r *http.Request, skil
 // enableSkill enables a skill
 func (h *SkillsHandler) enableSkill(w http.ResponseWriter, r *http.Request, skillID string) {
 	if err := h.skillManager.EnableSkill(r.Context(), skillID); err != nil {
-		if err == skills.ErrSkillNotFound {
+		if errors.Is(err, skills.ErrSkillNotFound) {
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
@@ -265,7 +267,7 @@ func (h *SkillsHandler) enableSkill(w http.ResponseWriter, r *http.Request, skil
 // disableSkill disables a skill
 func (h *SkillsHandler) disableSkill(w http.ResponseWriter, r *http.Request, skillID string) {
 	if err := h.skillManager.DisableSkill(r.Context(), skillID); err != nil {
-		if err == skills.ErrSkillNotFound {
+		if errors.Is(err, skills.ErrSkillNotFound) {
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
@@ -285,7 +287,7 @@ func (h *SkillsHandler) reloadSkill(w http.ResponseWriter, r *http.Request, skil
 	// Get current skill info to find the plugin path
 	skillInfo, err := h.skillManager.GetSkill(skillID)
 	if err != nil {
-		if err == skills.ErrSkillNotFound {
+		if errors.Is(err, skills.ErrSkillNotFound) {
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
@@ -328,7 +330,7 @@ func (h *SkillsHandler) updateSkill(w http.ResponseWriter, r *http.Request, skil
 	// Get current skill to update its configuration
 	skillInfo, err := h.skillManager.GetSkill(skillID)
 	if err != nil {
-		if err == skills.ErrSkillNotFound {
+		if errors.Is(err, skills.ErrSkillNotFound) {
 			writeError(w, http.StatusNotFound, "skill not found")
 			return
 		}
@@ -370,7 +372,9 @@ func extractSkillIDAndAction(path string) (string, string) {
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("Failed to encode JSON response: %v", err)
+	}
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

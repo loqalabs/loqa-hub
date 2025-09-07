@@ -221,7 +221,9 @@ func (sm *SkillManager) LoadSkill(ctx context.Context, skillPath string) error {
 
 	// Initialize the skill
 	if err := plugin.Initialize(ctx, config); err != nil {
-		sm.loader.UnloadSkill(ctx, plugin)
+		if unloadErr := sm.loader.UnloadSkill(ctx, plugin); unloadErr != nil {
+			logging.Sugar.Warnw("Failed to unload skill after initialization failure", "error", unloadErr)
+		}
 		return fmt.Errorf("skill initialization failed: %w", err)
 	}
 
@@ -275,6 +277,7 @@ func (sm *SkillManager) unloadSkillUnsafe(ctx context.Context, skillID string) e
 	// Unload from loader
 	if err := sm.loader.UnloadSkill(ctx, loadedSkill.Plugin); err != nil {
 		logging.Sugar.Warnw("Failed to unload skill from loader", "skill", security.SanitizeLogInput(skillID), "error", err)
+		// Continue with unloading even if loader fails
 	}
 
 	delete(sm.skills, skillID)

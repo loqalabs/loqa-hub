@@ -29,6 +29,11 @@ import (
 	"time"
 )
 
+const (
+	// Default response when the command parser cannot understand the user's intent
+	defaultUnclearResponse = "I'm not sure what you want me to do."
+)
+
 // CommandParser handles command classification using LLM
 type CommandParser struct {
 	ollamaURL string
@@ -169,7 +174,7 @@ func (cp *CommandParser) parseSingleCommand(transcription string) (*Command, err
 			Intent:     "unknown",
 			Entities:   make(map[string]string),
 			Confidence: 0.0,
-			Response:   "I'm not sure what you want me to do.",
+			Response:   defaultUnclearResponse,
 		}, nil
 	}
 
@@ -222,7 +227,11 @@ func (cp *CommandParser) queryOllama(prompt string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("error making request to Ollama: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("ollama API returned status %d", resp.StatusCode)
@@ -272,7 +281,7 @@ func (cp *CommandParser) parseResponse(response string) (*Command, error) {
 		command.Confidence = 0.5
 	}
 	if command.Response == "" {
-		command.Response = "I'm not sure what you want me to do."
+		command.Response = defaultUnclearResponse
 	}
 
 	return &command, nil
@@ -425,7 +434,7 @@ func (cp *CommandParser) parseMultiCommandResponse(response, originalText string
 			cmd.Confidence = 0.5
 		}
 		if cmd.Response == "" {
-			cmd.Response = "I'm not sure what you want me to do."
+			cmd.Response = defaultUnclearResponse
 		}
 	}
 
@@ -436,7 +445,7 @@ func (cp *CommandParser) parseMultiCommandResponse(response, originalText string
 		} else if len(multiResp.Commands) == 1 {
 			multiResp.CombinedResponse = multiResp.Commands[0].Response
 		} else {
-			multiResp.CombinedResponse = "I'm not sure what you want me to do."
+			multiResp.CombinedResponse = defaultUnclearResponse
 		}
 	}
 
@@ -455,7 +464,7 @@ func (cp *CommandParser) createCombinedCommand(multiCmd *MultiCommand) *Command 
 			Intent:     "unknown",
 			Entities:   make(map[string]string),
 			Confidence: 0.0,
-			Response:   "I'm not sure what you want me to do.",
+			Response:   defaultUnclearResponse,
 		}
 	}
 
@@ -498,7 +507,11 @@ func (cp *CommandParser) TestConnection() error {
 	if err != nil {
 		return fmt.Errorf("cannot connect to Ollama at %s: %w", cp.ollamaURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("ollama API returned status %d", resp.StatusCode)

@@ -181,7 +181,9 @@ func (h *VoiceEventsHandler) listVoiceEvents(w http.ResponseWriter, r *http.Requ
 	)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		logging.LogError(err, "Failed to encode JSON response")
+	}
 }
 
 // createVoiceEvent handles POST /api/voice-events
@@ -237,11 +239,13 @@ func (h *VoiceEventsHandler) createVoiceEvent(w http.ResponseWriter, r *http.Req
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(voiceEvent)
+	if err := json.NewEncoder(w).Encode(voiceEvent); err != nil {
+		logging.LogError(err, "Failed to encode JSON response")
+	}
 }
 
 // getVoiceEventByID handles GET /api/voice-events/{id}
-func (h *VoiceEventsHandler) getVoiceEventByID(w http.ResponseWriter, r *http.Request, uuid string) {
+func (h *VoiceEventsHandler) getVoiceEventByID(w http.ResponseWriter, _ *http.Request, uuid string) {
 	event, err := h.store.GetByUUID(uuid)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
@@ -262,7 +266,9 @@ func (h *VoiceEventsHandler) getVoiceEventByID(w http.ResponseWriter, r *http.Re
 	)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(event)
+	if err := json.NewEncoder(w).Encode(event); err != nil {
+		logging.LogError(err, "Failed to encode JSON response")
+	}
 }
 
 // parseIntParam parses integer parameter with default value
