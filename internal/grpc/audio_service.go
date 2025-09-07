@@ -25,6 +25,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/loqalabs/loqa-hub/internal/config"
 	"github.com/loqalabs/loqa-hub/internal/events"
 	"github.com/loqalabs/loqa-hub/internal/llm"
 	"github.com/loqalabs/loqa-hub/internal/logging"
@@ -39,6 +40,7 @@ type AudioService struct {
 	pb.UnimplementedAudioServiceServer
 	transcriber   llm.Transcriber
 	commandParser *llm.CommandParser
+	ttsClient     llm.TextToSpeech
 	natsService   *messaging.NATSService
 	eventsStore   *storage.VoiceEventsStore
 }
@@ -49,11 +51,39 @@ func NewAudioServiceWithSTT(sttURL string, eventsStore *storage.VoiceEventsStore
 	if err != nil {
 		return nil, err
 	}
-	return createAudioService(transcriber, eventsStore)
+	return createAudioService(transcriber, nil, eventsStore)
+}
+
+// NewAudioServiceWithTTS creates a new audio service with both STT and TTS support
+func NewAudioServiceWithTTS(sttURL string, ttsConfig config.TTSConfig, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
+	// Initialize STT client
+	transcriber, err := llm.NewSTTClient(sttURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create STT client: %w", err)
+	}
+
+	// Initialize TTS client
+	var ttsClient llm.TextToSpeech
+	if ttsConfig.URL != "" {
+		ttsClient, err = llm.NewKokoroClient(ttsConfig)
+		if err != nil {
+			if ttsConfig.FallbackEnabled {
+				logging.LogWarn("Failed to initialize Kokoro TTS, continuing without TTS",
+					zap.Error(err),
+					zap.String("tts_url", ttsConfig.URL),
+				)
+				ttsClient = nil
+			} else {
+				return nil, fmt.Errorf("failed to create TTS client: %w", err)
+			}
+		}
+	}
+
+	return createAudioService(transcriber, ttsClient, eventsStore)
 }
 
 // createAudioService is a helper to create the service with any transcriber implementation
-func createAudioService(transcriber llm.Transcriber, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
+func createAudioService(transcriber llm.Transcriber, ttsClient llm.TextToSpeech, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
 
 	// Initialize command parser with Ollama
 	ollamaURL := os.Getenv("OLLAMA_URL")
@@ -95,6 +125,7 @@ func createAudioService(transcriber llm.Transcriber, eventsStore *storage.VoiceE
 	return &AudioService{
 		transcriber:   transcriber,
 		commandParser: commandParser,
+		ttsClient:     ttsClient,
 		natsService:   natsService,
 		eventsStore:   eventsStore,
 	}, nil
@@ -326,6 +357,60 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 				}
 			}
 
+			// Generate TTS audio if TTS client is available and responseText is not empty
+			var ttsAudioData []byte
+			var ttsAudioFormat string
+			var ttsAudioDuration float32
+
+			if as.ttsClient != nil && responseText != "" {
+				ttsOptions := &llm.TTSOptions{
+					ResponseFormat: "mp3", // Default format, could be configurable
+					Speed:          1.0,   // Default speed, could be configurable
+					Normalize:      true,  // Default normalization
+				}
+
+				ttsResult, err := as.ttsClient.Synthesize(responseText, ttsOptions)
+				if err != nil {
+					logging.LogWarn("TTS synthesis failed, sending text-only response",
+						zap.Error(err),
+						zap.String("relay_id", chunk.RelayId),
+						zap.String("event_uuid", voiceEvent.UUID),
+						zap.String("response_text", responseText),
+					)
+				} else {
+					// Read audio data from the result
+					audioBytes, readErr := io.ReadAll(ttsResult.Audio)
+					if readErr != nil {
+						logging.LogWarn("Failed to read TTS audio data",
+							zap.Error(readErr),
+							zap.String("relay_id", chunk.RelayId),
+							zap.String("event_uuid", voiceEvent.UUID),
+						)
+					} else {
+						ttsAudioData = audioBytes
+						ttsAudioFormat = ttsOptions.ResponseFormat
+						if ttsResult.Length > 0 {
+							// Estimate duration based on typical bitrates
+							// For MP3 at 128kbps: ~16KB per second
+							ttsAudioDuration = float32(len(audioBytes)) / (16 * 1024)
+						}
+
+						logging.LogTTSOperation("synthesis_success",
+							zap.String("relay_id", chunk.RelayId),
+							zap.String("event_uuid", voiceEvent.UUID),
+							zap.Int("audio_bytes", len(audioBytes)),
+							zap.String("format", ttsAudioFormat),
+							zap.Float32("duration", ttsAudioDuration),
+						)
+					}
+
+					// Close the audio stream
+					if closer, ok := ttsResult.Audio.(io.Closer); ok {
+						closer.Close()
+					}
+				}
+			}
+
 			// Send response back to relay
 			response := &pb.AudioResponse{
 				RequestId:     chunk.RelayId, // Use relay ID as request ID
@@ -333,6 +418,9 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 				Command:       commandStr,
 				ResponseText:  responseText,
 				Success:       true,
+				ResponseAudio: ttsAudioData,
+				AudioFormat:   ttsAudioFormat,
+				AudioDuration: ttsAudioDuration,
 			}
 
 			if err := stream.Send(response); err != nil {

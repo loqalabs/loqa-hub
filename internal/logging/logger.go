@@ -82,7 +82,7 @@ func InitializeWithConfig(config LogConfig) error {
 	Logger = logger
 	Sugar = logger.Sugar()
 
-	Sugar.Infof("🚀 Structured logging initialized (level: %s, format: %s)", 
+	Sugar.Infof("🚀 Structured logging initialized (level: %s, format: %s)",
 		config.Level, config.Format)
 
 	return nil
@@ -193,6 +193,21 @@ func LogWarn(message string, fields ...zap.Field) {
 	}
 
 	Logger.Warn(message, fields...)
+}
+
+// LogTTSOperation logs text-to-speech operations
+func LogTTSOperation(operation string, fields ...zap.Field) {
+	if Logger == nil {
+		return
+	}
+
+	baseFields := []zap.Field{
+		zap.String("component", "tts"),
+		zap.String("operation", operation),
+	}
+
+	allFields := append(baseFields, fields...)
+	Logger.Info("TTS operation", allFields...)
 }
 
 // getEnvOrDefault gets environment variable or returns default

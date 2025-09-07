@@ -24,31 +24,33 @@ import (
 	"net"
 	"net/http"
 
-	"google.golang.org/grpc"
-	pb "github.com/loqalabs/loqa-proto/go/audio"
 	"github.com/loqalabs/loqa-hub/internal/api"
+	"github.com/loqalabs/loqa-hub/internal/config"
 	grpcservice "github.com/loqalabs/loqa-hub/internal/grpc"
 	"github.com/loqalabs/loqa-hub/internal/storage"
+	pb "github.com/loqalabs/loqa-proto/go/audio"
+	"google.golang.org/grpc"
 )
 
 type Config struct {
 	Port      string
 	GRPCPort  string
-	STTURL    string  // REST API URL for OpenAI-compatible STT service
+	STTURL    string // REST API URL for OpenAI-compatible STT service
 	ASRURL    string
 	IntentURL string
 	TTSURL    string
+	TTSConfig config.TTSConfig
 	DBPath    string
 }
 
 type Server struct {
-	cfg         Config
-	mux         *http.ServeMux
-	grpcServer  *grpc.Server
+	cfg          Config
+	mux          *http.ServeMux
+	grpcServer   *grpc.Server
 	audioService *grpcservice.AudioService
-	database    *storage.Database
-	eventsStore *storage.VoiceEventsStore
-	apiHandler  *api.VoiceEventsHandler
+	database     *storage.Database
+	eventsStore  *storage.VoiceEventsStore
+	apiHandler   *api.VoiceEventsHandler
 }
 
 func New(cfg Config) *Server {
@@ -71,12 +73,13 @@ func New(cfg Config) *Server {
 
 	// Create gRPC server and audio service
 	grpcServer := grpc.NewServer()
-	
+
 	var audioService *grpcservice.AudioService
-	
+
 	log.Printf("🎙️  Using STT service at: %s", cfg.STTURL)
-	audioService, err = grpcservice.NewAudioServiceWithSTT(cfg.STTURL, eventsStore)
-	
+	log.Printf("🔊 Using Kokoro TTS service at: %s", cfg.TTSConfig.URL)
+	audioService, err = grpcservice.NewAudioServiceWithTTS(cfg.STTURL, cfg.TTSConfig, eventsStore)
+
 	if err != nil {
 		log.Fatalf("Failed to create audio service: %v", err)
 	}
@@ -123,11 +126,11 @@ func (s *Server) Start() error {
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("/health", s.handleHealth)
-	
+
 	// Voice Events API
 	s.mux.HandleFunc("/api/voice-events", s.apiHandler.HandleVoiceEvents)
 	s.mux.HandleFunc("/api/voice-events/", s.apiHandler.HandleVoiceEventByID)
-	
+
 	// future: /wake, /stream, /session, etc.
 }
 

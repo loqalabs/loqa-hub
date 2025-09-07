@@ -11,7 +11,7 @@ package llm
 type Transcriber interface {
 	// Transcribe converts audio samples to text
 	Transcribe(audioData []float32, sampleRate int) (string, error)
-	
+
 	// Close cleans up resources
 	Close() error
 }
