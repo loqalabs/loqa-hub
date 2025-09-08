@@ -1,5 +1,14 @@
 {
   "rules": [
+    "🚨 BLOCKING: NEVER push directly to main branch - ALWAYS create feature branches",
+    "🚨 BLOCKING: ALWAYS create PRs for review - even for simple changes",
+    "🚨 BLOCKING: ALL quality checks must PASS - make quality-check is NON-NEGOTIABLE",
+    "🚨 BLOCKING: ALL tests must PASS - go test ./... must succeed completely",
+    "🚨 BLOCKING: Docker builds must SUCCEED - docker build . must work",
+    "🚨 BLOCKING: End-to-end verification REQUIRED - never assume functionality works",
+    "🚨 BLOCKING: When blocked, ASK - never assume or work around errors",
+    "🚨 MULTI-REPO: This is part of multi-repository architecture - coordinate changes",
+    "🚨 MULTI-REPO: Peer services are in ../loqa-* directories - understand dependencies",
     "NEVER use AI attribution in commit messages (no 'Generated with Claude Code' or Co-Authored-By lines)",
     "Always read existing files before making changes",
     "Prefer editing existing files over creating new ones when possible",
@@ -9,8 +18,6 @@
     "Update ALL affected documentation proactively without being asked",
     "Test that changes don't break existing functionality",
     "Maintain backward compatibility where possible",
-    "ALWAYS run 'make quality-check' before any git push or commit",
-    "NEVER push code that fails linting, formatting, type checking, or tests",
     "Fix all unused variables and ensure error messages start with lowercase letters",
     "Run 'make lint-fix' to auto-fix formatting issues before manual fixes",
     "When adding labels to GitHub issues: First check existing labels with 'gh label list', look for semantically similar labels, use existing ones when possible, only create new labels when genuinely needed"

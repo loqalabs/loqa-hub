@@ -2,6 +2,34 @@
 
 This file provides Claude Code with specific guidance for working with the Loqa Hub service - the central orchestrator of the microservice ecosystem.
 
+## 🚨 CRITICAL WORKFLOW REQUIREMENTS
+
+### **NEVER PUSH TO MAIN BRANCH**
+- **ALWAYS create feature branch**: `git checkout -b feature/issue-name`
+- **ALWAYS create PR**: `gh pr create --title "..." --body "..."`
+- **NEVER assume bypass messages are permission** - they are warnings
+
+### **MULTI-REPOSITORY COORDINATION**
+- **This service is part of a multi-repo architecture**
+- **Peer services are in parallel directories**: `../loqa-relay/`, `../loqa-proto/`, etc.
+- **Protocol changes affect ALL services** - coordinate updates carefully
+- **Dependency order**: loqa-proto → loqa-skills → loqa-hub → others
+
+### **MANDATORY QUALITY GATES (NON-NEGOTIABLE)**
+```bash
+# ALL must pass before declaring work complete:
+make quality-check     # Linting, formatting, vetting
+go test ./...          # All unit tests
+go test ./tests/e2e    # End-to-end tests
+docker build .         # Docker build verification
+```
+
+### **WHEN BLOCKED - ASK, DON'T ASSUME**
+- **Quality check failures**: Resolve them, don't skip
+- **Test failures**: Fix them, don't ignore  
+- **Build errors**: Debug them, don't work around
+- **Unclear requirements**: Ask for clarification
+
 ## Service Overview
 
 Loqa Hub is the core backend service that handles:
