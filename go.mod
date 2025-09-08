@@ -1,6 +1,6 @@
 module github.com/loqalabs/loqa-hub
 
-go 1.23.0
+go 1.25.1
 
 require (
 	github.com/loqalabs/loqa-proto/go v0.0.18
