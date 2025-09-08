@@ -59,10 +59,10 @@ func TestHubConnection(t *testing.T) {
 
 	// Send test audio chunk
 	testChunk := &pb.AudioChunk{
-		Data:       make([]byte, 1024), // Empty test data
+		RelayId:    "test-relay",
+		AudioData:  make([]byte, 1024), // Empty test data
 		SampleRate: 16000,
-		Channels:   1,
-		Format:     pb.AudioFormat_PCM_16,
+		Timestamp:  time.Now().UnixNano(),
 	}
 
 	if err := stream.Send(testChunk); err != nil {
@@ -107,10 +107,10 @@ func TestHubAudioProcessing(t *testing.T) {
 	// Send multiple audio chunks to simulate real audio
 	for i := 0; i < 5; i++ {
 		chunk := &pb.AudioChunk{
-			Data:       make([]byte, 1024),
+			RelayId:    "test-relay",
+			AudioData:  make([]byte, 1024),
 			SampleRate: 16000,
-			Channels:   1,
-			Format:     pb.AudioFormat_PCM_16,
+			Timestamp:  time.Now().UnixNano(),
 		}
 
 		if err := stream.Send(chunk); err != nil {
