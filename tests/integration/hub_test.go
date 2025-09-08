@@ -26,7 +26,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb "github.com/loqa-voice-assistant/proto/go"
+	pb "github.com/loqalabs/loqa-proto/go/audio"
 )
 
 const (
