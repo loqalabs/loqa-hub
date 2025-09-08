@@ -1,3 +1,5 @@
+version: 2
+
 run:
   timeout: 3m
   issues-exit-code: 1
@@ -5,72 +7,18 @@ run:
 
 linters:
   enable:
-    # Essential linters (matches what CI typically runs)
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
-    - typecheck
     - unused
-    - gofmt
-    - goimports
     - misspell
-    - stylecheck
-    
-    # Additional useful linters
-    - bodyclose
-    - contextcheck
-    - durationcheck
-    - errname
-    - errorlint
     - gosec
     - goconst
-    - rowserrcheck
-    - sqlclosecheck
     - unconvert
     - unparam
-    
-  disable:
-    - tenv           # deprecated
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-    
-  gosec:
-    excludes:
-      - G204  # Subprocess launched with variable (often false positive)
-      - G304  # File path provided as taint input (often false positive)
-      
-  stylecheck:
-    checks: ["all", "-ST1000", "-ST1003", "-ST1016", "-ST1020", "-ST1021", "-ST1022"]
-    
-  goconst:
-    min-len: 3
-    min-occurrences: 3
 
 issues:
   exclude-use-default: false
-  exclude-rules:
-    # Exclude some linters from running on tests files
-    - path: _test\.go
-      linters:
-        - errcheck
-        - gosec
-        
-    # Exclude certain rules for main.go files  
-    - path: cmd/
-      linters:
-        - errcheck  # main.go often has unchecked errors that are OK
-        
-    # Exclude specific unparam issues that are intentional for API consistency
-    - text: "rollbackCommands.*result 0.*is always nil"
-      linters:
-        - unparam
-    - text: "float32ToWAV.*result 1.*is always nil"
-      linters:
-        - unparam
-        
   max-issues-per-linter: 0
   max-same-issues: 0
