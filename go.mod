@@ -10,6 +10,9 @@ require (
 	modernc.org/sqlite v1.38.2
 )
 
+// Development mode: Uncomment the line below to use local proto changes for testing
+// replace github.com/loqalabs/loqa-proto/go => ../loqa-proto/go
+
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect

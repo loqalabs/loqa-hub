@@ -48,6 +48,32 @@ Loqa Hub is the core backend service that handles:
 - **Communicates With**: loqa-relay (audio input), loqa-commander (web UI), skills (commands)
 - **Ports**: `:3000` (HTTP API), `:50051` (gRPC server)
 
+## 🚀 Proto Development Workflow
+
+### **Testing Protocol Changes**
+
+When working with protocol changes, use development mode to test changes before proto releases:
+
+```bash
+# Enable development mode (use local proto changes)
+./scripts/proto-dev-mode.sh dev
+
+# Test with local proto changes
+make quality-check
+go test ./...
+
+# Disable development mode (use released proto version)  
+./scripts/proto-dev-mode.sh prod
+
+# Check current mode
+./scripts/proto-dev-mode.sh status
+```
+
+### **Benefits**
+- ✅ Test proto changes without GitHub releases
+- ✅ End-to-end validation across services
+- ✅ Safe rollback between dev/prod modes
+
 ## Development Commands
 
 ### Local Development

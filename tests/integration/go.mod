@@ -15,4 +15,5 @@ require (
 	google.golang.org/protobuf v1.36.8 // indirect
 )
 
+// Development mode: Using local proto changes for integration testing
 replace github.com/loqalabs/loqa-proto/go => ../../../loqa-proto/go
