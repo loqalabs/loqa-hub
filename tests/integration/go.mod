@@ -1,9 +1,9 @@
-module github.com/loqa-voice-assistant/tests/integration
+module github.com/loqalabs/loqa-hub/tests/integration
 
 go 1.25.1
 
 require (
-	github.com/loqalabs/loqa-proto/go v0.0.18
+	github.com/loqalabs/loqa-proto/go v0.0.19
 	google.golang.org/grpc v1.75.0
 )
 

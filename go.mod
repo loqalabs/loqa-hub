@@ -3,7 +3,7 @@ module github.com/loqalabs/loqa-hub
 go 1.25.1
 
 require (
-	github.com/loqalabs/loqa-proto/go v0.0.18
+	github.com/loqalabs/loqa-proto/go v0.0.20
 	github.com/nats-io/nats.go v1.45.0
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.75.0
@@ -30,7 +30,7 @@ require (
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250707201910-8d1bb00bc6a7 // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
+	google.golang.org/protobuf v1.36.8 // indirect
 	modernc.org/libc v1.66.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
