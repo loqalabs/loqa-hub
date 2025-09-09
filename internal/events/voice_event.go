@@ -20,13 +20,9 @@ package events
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"time"
 )
 
@@ -39,7 +35,6 @@ type VoiceEvent struct {
 	Timestamp time.Time `json:"timestamp" db:"timestamp"`
 
 	// Audio metadata
-	AudioHash        string  `json:"audio_hash" db:"audio_hash"`
 	AudioDuration    float64 `json:"audio_duration" db:"audio_duration"`
 	SampleRate       int     `json:"sample_rate" db:"sample_rate"`
 	WakeWordDetected bool    `json:"wake_word_detected" db:"wake_word_detected"`
@@ -87,7 +82,6 @@ func generateUUID() string {
 
 // SetAudioMetadata sets audio-related metadata for the event
 func (ve *VoiceEvent) SetAudioMetadata(audioData []float32, sampleRate int, isWakeWord bool) {
-	ve.AudioHash = ve.calculateAudioHash(audioData)
 	ve.AudioDuration = float64(len(audioData)) / float64(sampleRate)
 	ve.SampleRate = sampleRate
 	ve.WakeWordDetected = isWakeWord
@@ -118,19 +112,6 @@ func (ve *VoiceEvent) SetError(err error) {
 	ve.ProcessingTime = time.Since(ve.Timestamp).Milliseconds()
 }
 
-// calculateAudioHash generates a SHA-256 hash of the audio data for duplicate detection
-func (ve *VoiceEvent) calculateAudioHash(audioData []float32) string {
-	hasher := sha256.New()
-
-	// Convert float32 slice to bytes for hashing using safe binary encoding
-	for _, sample := range audioData {
-		bytes := make([]byte, 4)
-		binary.LittleEndian.PutUint32(bytes, math.Float32bits(sample))
-		hasher.Write(bytes)
-	}
-
-	return hex.EncodeToString(hasher.Sum(nil))
-}
 
 // EntitiesJSON returns entities as JSON string for database storage
 func (ve *VoiceEvent) EntitiesJSON() (string, error) {

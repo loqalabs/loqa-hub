@@ -32,6 +32,7 @@ type Config struct {
 	TTS     TTSConfig
 	Logging LoggingConfig
 	NATS    NATSConfig
+	Privacy PrivacyConfig
 }
 
 // ServerConfig holds server-related configuration
@@ -77,6 +78,21 @@ type NATSConfig struct {
 	ReconnectWait time.Duration
 }
 
+// PrivacyConfig holds privacy and data retention configuration
+type PrivacyConfig struct {
+	// DataRetention controls how long voice event data is kept
+	DataRetention time.Duration
+	
+	// ZeroPersistence disables all persistent storage of voice events (RAM only)
+	ZeroPersistence bool
+	
+	// AutoCleanupEnabled enables automatic cleanup of old voice events
+	AutoCleanupEnabled bool
+	
+	// CleanupInterval controls how often the cleanup job runs
+	CleanupInterval time.Duration
+}
+
 // Load loads configuration from environment variables with defaults
 func Load() (*Config, error) {
 	config := &Config{
@@ -113,6 +129,12 @@ func Load() (*Config, error) {
 			MaxReconnect:  getEnvInt("NATS_MAX_RECONNECT", 10),
 			ReconnectWait: getEnvDuration("NATS_RECONNECT_WAIT", 2*time.Second),
 		},
+		Privacy: PrivacyConfig{
+			DataRetention:      getEnvDuration("LOQA_DATA_RETENTION", 30*24*time.Hour), // 30 days default
+			ZeroPersistence:    getEnvBool("LOQA_ZERO_PERSISTENCE", false),             // false by default
+			AutoCleanupEnabled: getEnvBool("LOQA_AUTO_CLEANUP", true),                  // true by default
+			CleanupInterval:    getEnvDuration("LOQA_CLEANUP_INTERVAL", 24*time.Hour),  // daily cleanup
+		},
 	}
 
 	if err := config.validate(); err != nil {
@@ -146,6 +168,14 @@ func (c *Config) validate() error {
 
 	if c.TTS.Speed <= 0 {
 		return fmt.Errorf("TTS speed must be positive: %f", c.TTS.Speed)
+	}
+
+	if c.Privacy.DataRetention < 0 {
+		return fmt.Errorf("data retention duration cannot be negative: %s", c.Privacy.DataRetention)
+	}
+
+	if c.Privacy.CleanupInterval <= 0 {
+		return fmt.Errorf("cleanup interval must be positive: %s", c.Privacy.CleanupInterval)
 	}
 
 	return nil

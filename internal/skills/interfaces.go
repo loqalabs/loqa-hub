@@ -58,7 +58,6 @@ type VoiceIntent struct {
 	UserID    string    `json:"user_id,omitempty"`
 	DeviceID  string    `json:"device_id"`
 	Timestamp time.Time `json:"timestamp"`
-	AudioHash string    `json:"audio_hash,omitempty"`
 
 	// Context
 	SessionID string                 `json:"session_id,omitempty"`
