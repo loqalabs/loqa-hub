@@ -53,19 +53,19 @@ func (s *VoiceEventsStore) Insert(event *events.VoiceEvent) error {
 	query := `
 		INSERT INTO voice_events (
 			uuid, request_id, relay_id, timestamp,
-			audio_hash, audio_duration, sample_rate, wake_word_detected,
+			audio_duration, sample_rate, wake_word_detected,
 			transcription, intent, entities, confidence,
 			response_text, processing_time_ms, success, error_message
 		) VALUES (
 			?, ?, ?, ?,
-			?, ?, ?, ?,
+			?, ?, ?,
 			?, ?, ?, ?,
 			?, ?, ?, ?
 		)`
 
 	_, err = s.db.DB().Exec(query,
 		event.UUID, event.RequestID, event.RelayID, event.Timestamp,
-		event.AudioHash, event.AudioDuration, event.SampleRate, event.WakeWordDetected,
+		event.AudioDuration, event.SampleRate, event.WakeWordDetected,
 		event.Transcription, event.Intent, entitiesJSON, event.Confidence,
 		event.ResponseText, event.ProcessingTime, event.Success, event.ErrorMessage,
 	)
@@ -83,7 +83,7 @@ func (s *VoiceEventsStore) Insert(event *events.VoiceEvent) error {
 func (s *VoiceEventsStore) GetByUUID(uuid string) (*events.VoiceEvent, error) {
 	query := `
 		SELECT uuid, request_id, relay_id, timestamp,
-			   audio_hash, audio_duration, sample_rate, wake_word_detected,
+			   audio_duration, sample_rate, wake_word_detected,
 			   transcription, intent, entities, confidence,
 			   response_text, processing_time_ms, success, error_message
 		FROM voice_events 
@@ -151,42 +151,6 @@ func (s *VoiceEventsStore) GetRecentByRelay(relayID string, limit int) ([]*event
 	return s.List(options)
 }
 
-// GetByAudioHash finds events with the same audio hash (potential duplicates)
-func (s *VoiceEventsStore) GetByAudioHash(audioHash string) ([]*events.VoiceEvent, error) {
-	query := `
-		SELECT uuid, request_id, relay_id, timestamp,
-			   audio_hash, audio_duration, sample_rate, wake_word_detected,
-			   transcription, intent, entities, confidence,
-			   response_text, processing_time_ms, success, error_message
-		FROM voice_events 
-		WHERE audio_hash = ?
-		ORDER BY timestamp DESC`
-
-	rows, err := s.db.DB().Query(query, audioHash)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query by audio hash: %w", err)
-	}
-	defer func() {
-		if err := rows.Close(); err != nil {
-			log.Printf("Warning: failed to close rows: %v", err)
-		}
-	}()
-
-	var eventsList []*events.VoiceEvent
-	for rows.Next() {
-		event, err := s.scanVoiceEvent(rows)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan voice event: %w", err)
-		}
-		eventsList = append(eventsList, event)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating voice events: %w", err)
-	}
-
-	return eventsList, nil
-}
 
 // Delete removes a voice event by UUID
 func (s *VoiceEventsStore) Delete(uuid string) error {
@@ -230,7 +194,7 @@ type ListOptions struct {
 func (s *VoiceEventsStore) buildListQuery(options ListOptions) (string, []interface{}) {
 	query := `
 		SELECT uuid, request_id, relay_id, timestamp,
-			   audio_hash, audio_duration, sample_rate, wake_word_detected,
+			   audio_duration, sample_rate, wake_word_detected,
 			   transcription, intent, entities, confidence,
 			   response_text, processing_time_ms, success, error_message
 		FROM voice_events WHERE 1=1`
@@ -303,7 +267,7 @@ func (s *VoiceEventsStore) scanVoiceEvent(scanner interface{}) (*events.VoiceEve
 
 	err := row.Scan(
 		&event.UUID, &event.RequestID, &event.RelayID, &event.Timestamp,
-		&event.AudioHash, &event.AudioDuration, &event.SampleRate, &event.WakeWordDetected,
+		&event.AudioDuration, &event.SampleRate, &event.WakeWordDetected,
 		&event.Transcription, &event.Intent, &entitiesJSON, &event.Confidence,
 		&event.ResponseText, &event.ProcessingTime, &event.Success, &event.ErrorMessage,
 	)

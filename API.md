@@ -46,7 +46,6 @@ curl "http://localhost:3000/api/voice-events?page=1&page_size=10&relay_id=kitche
       "request_id": "kitchen-relay-001",
       "relay_id": "kitchen-relay",
       "timestamp": "2025-01-15T10:30:45Z",
-      "audio_hash": "sha256:abc123...",
       "audio_duration": 2.5,
       "sample_rate": 16000,
       "wake_word_detected": true,
@@ -96,7 +95,6 @@ curl "http://localhost:3000/api/voice-events/123e4567-e89b-12d3-a456-42661417400
   "request_id": "kitchen-relay-001",
   "relay_id": "kitchen-relay",
   "timestamp": "2025-01-15T10:30:45Z",
-  "audio_hash": "sha256:abc123...",
   "audio_duration": 2.5,
   "sample_rate": 16000,
   "wake_word_detected": true,
@@ -188,7 +186,6 @@ curl -X POST "http://localhost:3000/api/voice-events" \
 | `request_id`        | string            | Request identifier from the relay              |
 | `relay_id`           | string            | Identifier of the relay that sent the audio   |
 | `timestamp`         | string (RFC3339)  | When the event was created                    |
-| `audio_hash`        | string            | SHA-256 hash of the audio data               |
 | `audio_duration`    | number            | Duration of audio in seconds                  |
 | `sample_rate`       | integer           | Audio sample rate (Hz)                        |
 | `wake_word_detected`| boolean           | Whether wake word was detected                |
