@@ -81,12 +81,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # Only required for Organizations
-
-    - name: Upload GitLeaks results
-      uses: github/codeql-action/upload-sarif@v3
-      if: always()
-      with:
-        sarif_file: results.sarif
+        GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
 
   codeql:
     name: CodeQL Analysis
