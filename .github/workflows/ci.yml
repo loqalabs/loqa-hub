@@ -152,11 +152,3 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-  security:
-    name: Security Analysis
-    uses: loqalabs/.github/.github/workflows/security-scan.yml@main
-    with:
-      language: 'go'
-      go-version: '1.25.1'
-      working-directory: '.'
-    secrets: inherit
