@@ -9,7 +9,7 @@
     "🚨 BLOCKING: When blocked, ASK - never assume or work around errors",
     "🚨 MULTI-REPO: This is part of multi-repository architecture - coordinate changes",
     "🚨 MULTI-REPO: Peer services are in ../loqa-* directories - understand dependencies",
-    "NEVER use AI attribution in commit messages (no 'Generated with Claude Code' or Co-Authored-By lines)",
+    "NEVER use AI attribution in commit messages - ENFORCED BY PRE-COMMIT HOOKS (no 'Generated with Claude Code' or Co-Authored-By lines)",
     "Always read existing files before making changes",
     "Prefer editing existing files over creating new ones when possible",
     "Use TodoWrite tool to track progress on complex tasks",
@@ -110,10 +110,29 @@
   ],
   "avoid": [
     "Making changes without understanding current state",
-    "Breaking existing functionality unnecessarily",
+    "Breaking existing functionality unnecessarily", 
     "Creating new files when editing existing ones works",
     "Rushing implementation without proper planning",
     "Ignoring dependencies between repositories",
     "Over-analyzing ideas that just need to be captured"
-  ]
+  ],
+  "rule_enforcement": {
+    "description": "This repository has automated rule enforcement via pre-commit hooks",
+    "pre_commit_hooks": {
+      "installed": true,
+      "location": ".git/hooks/pre-commit",
+      "enforces": [
+        "No AI attribution in commit messages",
+        "No direct commits to main/master branches",
+        "Conventional commit format validation"
+      ],
+      "source": "../loqa/project/loqa-rules-mcp/pre-commit-hook.sh",
+      "test": "echo 'test message' | .git/hooks/pre-commit"
+    },
+    "mcp_server": {
+      "available": true,
+      "location": "../loqa/project/loqa-rules-mcp/dist/index.js",
+      "provides_validation_for": "commit messages, branch names, quality gates"
+    }
+  }
 }
