@@ -17,6 +17,15 @@ go.work.sum
 # Test binary, built with `go test -c`
 *.test
 
+# Compiled binaries (should not be committed)
+loqa-hub-test
+skills-cli
+hub
+loqa-hub
+loqa-hub-stub
+test-static
+test-hub
+
 # Output of the go coverage tool
 *.out
 
