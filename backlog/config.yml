@@ -1,13 +1,28 @@
 project_name: "Loqa Hub - Central Service and API"
 default_status: "To Do"
 statuses: ["To Do", "In Progress", "Done"]
-labels: []
-milestones: []
+labels: 
+  - "loqa-hub"
+  - "loqa-commander" 
+  - "loqa-relay"
+  - "loqa-proto"
+  - "loqa-skills"
+  - "www-loqalabs-com"
+  - "cross-repo"
+  - "protocol-change"
+  - "bug-fix"
+  - "feature"
+  - "technical-debt"
+  - "documentation"
+milestones:
+  - "MVP-Ready"
+  - "Phase-1-Complete"
+  - "Production-Ready"
 date_format: yyyy-mm-dd
 max_column_width: 20
-auto_open_browser: true
+auto_open_browser: false
 default_port: 6420
-remote_operations: true
+remote_operations: false
 auto_commit: false
 bypass_git_hooks: false
 check_active_branches: true
