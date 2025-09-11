@@ -126,12 +126,12 @@
         "No direct commits to main/master branches",
         "Conventional commit format validation"
       ],
-      "source": "../loqa/project/loqa-rules-mcp/pre-commit-hook.sh",
+      "source": "../loqa/project/loqa-assistant-mcp/pre-commit-hook.sh",
       "test": "echo 'test message' | .git/hooks/pre-commit"
     },
     "mcp_server": {
       "available": true,
-      "location": "../loqa/project/loqa-rules-mcp/dist/index.js",
+      "location": "../loqa/project/loqa-assistant-mcp/dist/index.js",
       "provides_validation_for": "commit messages, branch names, quality gates"
     }
   }
