@@ -82,13 +82,13 @@ type NATSConfig struct {
 type PrivacyConfig struct {
 	// DataRetention controls how long voice event data is kept
 	DataRetention time.Duration
-	
+
 	// ZeroPersistence disables all persistent storage of voice events (RAM only)
 	ZeroPersistence bool
-	
+
 	// AutoCleanupEnabled enables automatic cleanup of old voice events
 	AutoCleanupEnabled bool
-	
+
 	// CleanupInterval controls how often the cleanup job runs
 	CleanupInterval time.Duration
 }

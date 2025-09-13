@@ -151,7 +151,6 @@ func (s *VoiceEventsStore) GetRecentByRelay(relayID string, limit int) ([]*event
 	return s.List(options)
 }
 
-
 // Delete removes a voice event by UUID
 func (s *VoiceEventsStore) Delete(uuid string) error {
 	result, err := s.db.DB().Exec("DELETE FROM voice_events WHERE uuid = ?", uuid)
