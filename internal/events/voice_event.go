@@ -112,7 +112,6 @@ func (ve *VoiceEvent) SetError(err error) {
 	ve.ProcessingTime = time.Since(ve.Timestamp).Milliseconds()
 }
 
-
 // EntitiesJSON returns entities as JSON string for database storage
 func (ve *VoiceEvent) EntitiesJSON() (string, error) {
 	if ve.Entities == nil {
