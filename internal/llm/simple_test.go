@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func TestPredictiveTypes(t *testing.T) {
+func TestBasicTypes(t *testing.T) {
 	// Test that our types are properly defined
 	var responseType PredictiveType = PredictiveOptimistic
 	if responseType != "optimistic" {
@@ -28,7 +28,7 @@ func TestPredictiveTypes(t *testing.T) {
 	}
 }
 
-func TestDeviceReliabilityTracker(t *testing.T) {
+func TestDeviceReliabilityBasic(t *testing.T) {
 	tracker := NewDeviceReliabilityTracker()
 
 	deviceID := "test_device"
@@ -58,10 +58,7 @@ func TestDeviceReliabilityTracker(t *testing.T) {
 
 func TestIntentCategoryExtraction(t *testing.T) {
 	tracker := NewDeviceReliabilityTracker()
-	mockParser := &CommandParser{
-		ollamaURL: "http://localhost:11434",
-		model:     "test-model",
-	}
+	mockParser := NewCommandParser("http://localhost:11434", "test-model")
 	classifier := NewCommandClassifier(mockParser, tracker)
 
 	tests := []struct {

@@ -20,6 +20,7 @@ package llm
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -252,10 +253,7 @@ func TestDeviceReliabilityTracker(t *testing.T) {
 }
 
 func TestCommandClassifier_ClassifyCommand(t *testing.T) {
-	mockParser := &CommandParser{
-		ollamaURL: "http://localhost:11434",
-		model:     "test-model",
-	}
+	mockParser := NewCommandParser("http://localhost:11434", "test-model")
 
 	tracker := NewDeviceReliabilityTracker()
 	classifier := NewCommandClassifier(mockParser, tracker)
@@ -263,28 +261,28 @@ func TestCommandClassifier_ClassifyCommand(t *testing.T) {
 	tests := []struct {
 		name                    string
 		transcript              string
-		expectedDeviceCategory  DeviceCategory
+		expectedIntentCategory  IntentCategory
 		expectedOperationType   OperationType
 		expectedResponseType    PredictiveType
 	}{
 		{
 			name:                   "light control",
 			transcript:             "turn off the bedroom lights",
-			expectedDeviceCategory: DeviceLights,
+			expectedIntentCategory: CategorySmartHome,
 			expectedOperationType:  OperationControl,
 			expectedResponseType:   PredictiveCautious, // Will be cautious due to low mock confidence
 		},
 		{
 			name:                   "garage operation",
 			transcript:             "open the garage door",
-			expectedDeviceCategory: DeviceGarage,
+			expectedIntentCategory: CategorySmartHome,
 			expectedOperationType:  OperationControl,
 			expectedResponseType:   PredictiveProgress, // Slow operation
 		},
 		{
 			name:                   "security query",
 			transcript:             "check if the front door is locked",
-			expectedDeviceCategory: DeviceSecurity,
+			expectedIntentCategory: CategorySmartHome,
 			expectedOperationType:  OperationQuery,
 			expectedResponseType:   PredictiveConfirm, // Critical operation
 		},
@@ -306,9 +304,9 @@ func TestCommandClassifier_ClassifyCommand(t *testing.T) {
 			}
 
 			// Test the classification logic directly
-			deviceCategory := classifier.extractDeviceCategory(tt.transcript, map[string]string{})
-			if deviceCategory != tt.expectedDeviceCategory {
-				t.Errorf("expected device category %s, got %s", tt.expectedDeviceCategory, deviceCategory)
+			intentCategory := classifier.extractIntentCategory(tt.transcript, map[string]string{})
+			if intentCategory != tt.expectedIntentCategory {
+				t.Errorf("expected intent category %s, got %s", tt.expectedIntentCategory, intentCategory)
 			}
 
 			operationType := classifier.extractOperationType(tt.transcript, map[string]string{})
@@ -488,6 +486,14 @@ func (mtts *MockTTSClient) Synthesize(text string, options *TTSOptions) (*TTSRes
 	}, nil
 }
 
+func (mtts *MockTTSClient) GetAvailableVoices() ([]string, error) {
+	return []string{"test_voice", "af_bella"}, nil
+}
+
+func (mtts *MockTTSClient) Close() error {
+	return nil
+}
+
 func TestPredictiveTypes(t *testing.T) {
 	tests := []struct {
 		confidence       float64
@@ -527,7 +533,7 @@ func TestPredictiveTypes(t *testing.T) {
 	}
 
 	tracker := NewDeviceReliabilityTracker()
-	mockParser := &CommandParser{}
+	mockParser := NewCommandParser("http://localhost:11434", "test-model")
 	classifier := NewCommandClassifier(mockParser, tracker)
 
 	for i, tt := range tests {

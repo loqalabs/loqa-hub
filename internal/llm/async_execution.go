@@ -80,8 +80,8 @@ type ExecutionMetrics struct {
 	LastExecutionTime     time.Time     `json:"last_execution_time"`
 }
 
-// ExecutionResult represents the outcome of an async execution
-type ExecutionResult struct {
+// AsyncExecutionResult represents the outcome of an async execution
+type AsyncExecutionResult struct {
 	ExecutionID   string                `json:"execution_id"`
 	Success       bool                  `json:"success"`
 	Response      *skills.SkillResponse `json:"response,omitempty"`
@@ -205,11 +205,11 @@ func (aep *AsyncExecutionPipeline) worker(workerID int) {
 }
 
 // executeTask performs the actual skill execution with retry logic
-func (aep *AsyncExecutionPipeline) executeTask(task *ExecutionTask) *ExecutionResult {
+func (aep *AsyncExecutionPipeline) executeTask(task *ExecutionTask) *AsyncExecutionResult {
 	queueTime := time.Since(task.StartTime)
 	executionStart := time.Now()
 
-	result := &ExecutionResult{
+	result := &AsyncExecutionResult{
 		ExecutionID: task.ExecutionID,
 		QueueTime:   queueTime,
 		RetryCount:  task.RetryCount,
@@ -289,7 +289,7 @@ func (aep *AsyncExecutionPipeline) executeWithRetry(task *ExecutionTask, skill s
 }
 
 // sendExecutionResult sends the final status update based on execution result
-func (aep *AsyncExecutionPipeline) sendExecutionResult(task *ExecutionTask, result *ExecutionResult) {
+func (aep *AsyncExecutionPipeline) sendExecutionResult(task *ExecutionTask, result *AsyncExecutionResult) {
 	var statusUpdate StatusUpdate
 
 	if result.Success {
@@ -400,7 +400,7 @@ func (aep *AsyncExecutionPipeline) updateMetricsStart() {
 }
 
 // updateMetricsComplete updates metrics when execution completes
-func (aep *AsyncExecutionPipeline) updateMetricsComplete(result *ExecutionResult) {
+func (aep *AsyncExecutionPipeline) updateMetricsComplete(result *AsyncExecutionResult) {
 	aep.executionMetrics.mu.Lock()
 	defer aep.executionMetrics.mu.Unlock()
 

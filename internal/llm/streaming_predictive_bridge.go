@@ -26,7 +26,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loqalabs/loqa-hub/internal/skills"
 )
 
 // StreamingPredictiveBridge integrates streaming LLM with predictive response architecture
@@ -280,12 +279,13 @@ func (spb *StreamingPredictiveBridge) processStreamingOnly(ctx context.Context, 
 	session.StreamingActive = true
 
 	// Start streaming response
-	streamingCtx, err := spb.streamingParser.StartStreaming(ctx, session.UserTranscript)
+	streamingResult, err := spb.streamingParser.ParseCommandStreaming(ctx, session.UserTranscript)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start streaming: %w", err)
 	}
+	_ = streamingResult // Store for future monitoring integration
 
-	session.StreamingContext = streamingCtx
+	session.StreamingContext = "streaming_active"
 	session.FirstTokenTime = time.Now()
 
 	// Monitor streaming
@@ -303,12 +303,13 @@ func (spb *StreamingPredictiveBridge) fallbackToStreamingOnly(ctx context.Contex
 	session.PredictionActive = false
 
 	// Start streaming response
-	streamingCtx, err := spb.streamingParser.StartStreaming(ctx, session.UserTranscript)
+	streamingResult, err := spb.streamingParser.ParseCommandStreaming(ctx, session.UserTranscript)
 	if err != nil {
 		return nil, fmt.Errorf("fallback streaming failed: %w", err)
 	}
+	_ = streamingResult // Store for future monitoring integration
 
-	session.StreamingContext = streamingCtx
+	session.StreamingContext = "streaming_active"
 	session.FirstTokenTime = time.Now()
 
 	// Monitor streaming
