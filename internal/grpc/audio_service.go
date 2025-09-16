@@ -256,8 +256,9 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			sampleRate := int(chunk.SampleRate)
 			voiceEvent.SetAudioMetadata(audioData, sampleRate, chunk.IsWakeWord)
 
-			// Transcribe audio using STT service (with panic recovery and detailed logging)
+			// Transcribe audio using STT service with confidence (with panic recovery and detailed logging)
 			var transcription string
+			var transcriptionResult *llm.TranscriptionResult
 			var err error
 
 			// Log audio data characteristics before STT call
@@ -285,12 +286,33 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 					zap.String("event_uuid", voiceEvent.UUID),
 				)
 
-				transcription, err = as.transcriber.Transcribe(audioData, sampleRate)
+				transcriptionResult, err = as.transcriber.TranscribeWithConfidence(audioData, sampleRate)
+				if err == nil && transcriptionResult != nil {
+					transcription = transcriptionResult.Text
+				}
 
 				logging.LogAudioProcessing(chunk.RelayId, "stt_returned",
 					zap.String("event_uuid", voiceEvent.UUID),
 					zap.Bool("success", err == nil),
 					zap.Int("transcription_length", len(transcription)),
+					zap.Float64("confidence_estimate", func() float64 {
+						if transcriptionResult != nil {
+							return transcriptionResult.ConfidenceEstimate
+						}
+						return 0.0
+					}()),
+					zap.Bool("wake_word_detected", func() bool {
+						if transcriptionResult != nil {
+							return transcriptionResult.WakeWordDetected
+						}
+						return false
+					}()),
+					zap.Bool("needs_confirmation", func() bool {
+						if transcriptionResult != nil {
+							return transcriptionResult.NeedsConfirmation
+						}
+						return false
+					}()),
 				)
 			}()
 
@@ -318,16 +340,39 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 				continue
 			}
 
-			// Set transcription result
-			voiceEvent.SetTranscription(transcription)
+			// Set transcription result (with original transcription for logging)
+			if transcriptionResult != nil {
+				voiceEvent.SetTranscription(transcriptionResult.Text)
+			} else {
+				voiceEvent.SetTranscription(transcription)
+			}
 
 			logging.LogAudioProcessing(chunk.RelayId, "transcribed",
 				zap.String("event_uuid", voiceEvent.UUID),
 				zap.Int("audio_samples", len(audioData)),
 				zap.String("transcription", transcription),
 				zap.Bool("wake_word", chunk.IsWakeWord),
+				zap.Float64("confidence_estimate", func() float64 {
+					if transcriptionResult != nil {
+						return transcriptionResult.ConfidenceEstimate
+					}
+					return 0.0
+				}()),
+				zap.Bool("wake_word_detected", func() bool {
+					if transcriptionResult != nil {
+						return transcriptionResult.WakeWordDetected
+					}
+					return false
+				}()),
+				zap.String("wake_word_variant", func() string {
+					if transcriptionResult != nil {
+						return transcriptionResult.WakeWordVariant
+					}
+					return ""
+				}()),
 			)
 
+			// Handle low confidence or empty transcriptions
 			if transcription == "" {
 				logging.LogAudioProcessing(chunk.RelayId, "no_speech_detected",
 					zap.String("event_uuid", voiceEvent.UUID),
@@ -345,6 +390,33 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 				}
 				if err := stream.Send(response); err != nil {
 					logging.LogError(err, "Error sending no-speech response to relay")
+					return err
+				}
+				continue
+			}
+
+			// Handle low confidence transcriptions that need confirmation
+			if transcriptionResult != nil && transcriptionResult.NeedsConfirmation {
+				logging.LogAudioProcessing(chunk.RelayId, "low_confidence_detected",
+					zap.String("event_uuid", voiceEvent.UUID),
+					zap.Float64("confidence", transcriptionResult.ConfidenceEstimate),
+					zap.String("transcription", transcription),
+				)
+
+				confirmationMessage := fmt.Sprintf("I'm not sure I heard you correctly. Did you say '%s'? Please repeat if that's not right.", transcription)
+				voiceEvent.SetResponse(confirmationMessage)
+				as.storeVoiceEvent(voiceEvent)
+
+				// Send confirmation request back to relay
+				response := &pb.AudioResponse{
+					RequestId:     chunk.RelayId,
+					Transcription: transcription,
+					Command:       "confirmation_needed",
+					ResponseText:  confirmationMessage,
+					Success:       true,
+				}
+				if err := stream.Send(response); err != nil {
+					logging.LogError(err, "Error sending confirmation response to relay")
 					return err
 				}
 				continue
