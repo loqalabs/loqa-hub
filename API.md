@@ -1,6 +1,6 @@
-# Voice Events API
+# Loqa Hub API
 
-The Voice Events API provides access to stored voice interaction events from the Loqa hub. All endpoints return JSON responses.
+The Loqa Hub API provides access to voice events, skill management, and streaming metrics. All endpoints return JSON responses.
 
 ## Base URL
 
@@ -8,7 +8,15 @@ The Voice Events API provides access to stored voice interaction events from the
 http://localhost:3000/api
 ```
 
-## Endpoints
+## API Categories
+
+- [Voice Events API](#voice-events-api) - Event tracking and history
+- [Skills Management API](#skills-management-api) - Skill plugin administration
+- [🆕 Streaming Metrics API](#streaming-metrics-api) - Real-time streaming performance
+
+---
+
+## Voice Events API
 
 ### List Voice Events
 
@@ -308,3 +316,175 @@ Voice events now include detailed STT processing information:
 - **Enhanced method**: New `TranscribeWithConfidence()` provides detailed results
 - **Graceful fallback**: Low confidence gracefully handled without errors
 - **User experience**: Confirmation prompts improve interaction reliability
+
+---
+
+## 🆕 Streaming Metrics API
+
+The Streaming Metrics API provides real-time performance monitoring for the streaming LLM system.
+
+### Get Streaming Health Status
+
+**GET** `/streaming/health`
+
+Returns the current health status of the streaming system.
+
+#### Example Request
+
+```bash
+curl "http://localhost:3000/api/streaming/health"
+```
+
+#### Example Response
+
+```json
+{
+  "parser_enabled": true,
+  "active_sessions": 2,
+  "active_pipelines": 1,
+  "metrics_enabled": true,
+  "overall_health": "healthy",
+  "last_health_check": "2025-01-15T10:30:45Z"
+}
+```
+
+### Get Streaming Performance Metrics
+
+**GET** `/streaming/metrics`
+
+Returns comprehensive performance metrics for the streaming system.
+
+#### Example Request
+
+```bash
+curl "http://localhost:3000/api/streaming/metrics"
+```
+
+#### Example Response
+
+```json
+{
+  "summary": {
+    "total_sessions": 150,
+    "completed_sessions": 145,
+    "interrupted_sessions": 5,
+    "average_first_token": "250ms",
+    "average_first_phrase": "500ms",
+    "average_completion": "2.1s",
+    "total_tokens": 45000,
+    "total_phrases": 1200,
+    "streaming_enabled": true,
+    "fallback_usage": 3,
+    "error_rate": 0.02,
+    "throughput_tokens_per_sec": 150.5,
+    "last_updated": "2025-01-15T10:30:45Z"
+  },
+  "recent_sessions": [
+    {
+      "session_id": "session-abc123",
+      "start_time": "2025-01-15T10:25:30Z",
+      "first_token_latency": "180ms",
+      "first_phrase_latency": "420ms",
+      "total_duration": "1.8s",
+      "token_count": 35,
+      "phrase_count": 4,
+      "buffer_overflows": 0,
+      "interrupt_count": 0,
+      "was_interrupted": false,
+      "completed_naturally": true,
+      "error_encountered": false,
+      "tokens_per_second": 19.4,
+      "quality_score": 0.95
+    }
+  ],
+  "performance_trends": {
+    "last_hour_sessions": 25,
+    "last_hour_avg_latency": "230ms",
+    "last_hour_error_rate": 0.01,
+    "trend_direction": "improving",
+    "latency_trend": [250, 240, 235, 230, 225, 220, 230, 235, 230, 225],
+    "throughput_trend": [145.2, 148.1, 150.5, 152.3, 149.8, 151.0, 150.5, 148.9, 150.1, 151.2]
+  },
+  "recommended_settings": {
+    "optimal_buffer_time": "1.8s",
+    "optimal_concurrency": 4,
+    "recommend_streaming": true,
+    "estimated_improvement": "15% faster response time",
+    "configuration_changes": [
+      "Increase audio concurrency to 4",
+      "Reduce buffer time to 1.8s for better responsiveness"
+    ]
+  },
+  "health_status": "healthy"
+}
+```
+
+### Get Active Streaming Sessions
+
+**GET** `/streaming/sessions`
+
+Returns information about currently active streaming sessions.
+
+#### Example Request
+
+```bash
+curl "http://localhost:3000/api/streaming/sessions"
+```
+
+#### Example Response
+
+```json
+{
+  "active_sessions": [
+    {
+      "id": "session-xyz789",
+      "created_at": "2025-01-15T10:28:15Z",
+      "duration": "2.5s",
+      "is_interrupted": false,
+      "cleanup_completed": false
+    }
+  ],
+  "metrics": {
+    "active_sessions": 1,
+    "interrupted_count": 0,
+    "average_duration": "2.1s",
+    "interrupt_reasons": {}
+  }
+}
+```
+
+### Export Streaming Metrics
+
+**GET** `/streaming/metrics/export`
+
+Exports streaming metrics in JSON format for external monitoring systems.
+
+#### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `format` | string | `json` | Export format (`json`) |
+| `include_sessions` | boolean | `true` | Include individual session data |
+
+#### Example Request
+
+```bash
+curl "http://localhost:3000/api/streaming/metrics/export?include_sessions=false"
+```
+
+### Streaming Health Status Values
+
+| Status | Description |
+|--------|-------------|
+| `healthy` | All systems operating normally |
+| `warning` | Minor issues detected (>10% error rate or >2s latency) |
+| `critical` | Major issues (>20% error rate) |
+| `unknown` | Insufficient data or system initializing |
+| `disabled` | Streaming is disabled |
+
+### Integration Notes
+
+- **Real-time monitoring**: Metrics update in real-time as streaming sessions complete
+- **Performance optimization**: Use recommended settings to optimize streaming performance
+- **Health monitoring**: Monitor health status for early detection of issues
+- **External integration**: Export endpoints support integration with monitoring systems like Prometheus or Grafana

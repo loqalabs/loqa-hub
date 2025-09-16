@@ -15,9 +15,10 @@ Loqa Hub is the core service that handles:
 - gRPC API for audio input from relay devices
 - Speech-to-text processing via OpenAI-compatible STT service
 - LLM-based intent parsing and command extraction with **multi-command support**
+- **NEW:** Real-time streaming LLM responses with progressive audio synthesis
 - Sequential command execution with rollback capabilities
 - NATS integration for publishing commands to other services
-- **NEW:** Complete voice event tracking and observability
+- Complete voice event tracking and observability
 
 ## Features
 
@@ -69,6 +70,17 @@ Loqa Hub is the core service that handles:
 - 🔍 **Enhanced Logging**: Detailed confidence and wake word detection information in voice events
 - 🔄 **Backward Compatible**: Seamless fallback to single-command parsing when needed
 
+### 🆕 Milestone 6: Real-Time Streaming LLM Responses
+
+- ⚡ **Token-Level Streaming**: Immediate visual feedback as LLM generates responses
+- 🎵 **Progressive Audio Synthesis**: Parallel TTS processing with intelligent phrase buffering
+- 🔄 **Graceful Interruption**: 500ms timeout for clean stream cancellation
+- 📊 **Performance Metrics**: Real-time monitoring of streaming latency and throughput
+- 🛡️ **Fallback Mode**: Automatic degradation to traditional parsing when streaming fails
+- 🧠 **Intelligent Buffering**: Natural speech boundaries detection for optimal audio quality
+- ⚙️ **Configurable Streaming**: Feature flags and settings for production deployment
+- 🎯 **Memory Safety**: Comprehensive cleanup to prevent goroutine leaks and resource exhaustion
+
 ## Architecture
 
 The Hub service acts as the central nervous system of the Loqa platform, orchestrating the flow from voice input to actionable commands. With Milestone 2, all voice interactions are now fully traceable with structured events stored in SQLite and accessible via HTTP API.
@@ -76,6 +88,8 @@ The Hub service acts as the central nervous system of the Loqa platform, orchest
 ## Configuration
 
 ### Environment Variables
+
+#### Core Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -87,6 +101,21 @@ The Hub service acts as the central nervous system of the Loqa platform, orchest
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
 | `OLLAMA_MODEL` | `llama3.2:3b` | Ollama model for intent parsing |
 | `NATS_URL` | `nats://localhost:4222` | NATS server URL |
+
+#### 🆕 Streaming Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STREAMING_ENABLED` | `true` | Enable real-time streaming LLM responses |
+| `STREAMING_OLLAMA_URL` | `http://localhost:11434` | Ollama API URL for streaming |
+| `STREAMING_MODEL` | `llama3.2:3b` | LLM model for streaming responses |
+| `STREAMING_MAX_BUFFER_TIME` | `2s` | Maximum time to buffer tokens before TTS |
+| `STREAMING_MAX_TOKENS_PER_PHRASE` | `50` | Maximum tokens to buffer per phrase |
+| `STREAMING_AUDIO_CONCURRENCY` | `3` | Number of parallel TTS synthesis workers |
+| `STREAMING_VISUAL_FEEDBACK_DELAY` | `50ms` | Delay before showing visual tokens |
+| `STREAMING_INTERRUPT_TIMEOUT` | `500ms` | Timeout for graceful stream interruption |
+| `STREAMING_FALLBACK_ENABLED` | `true` | Enable fallback to non-streaming mode |
+| `STREAMING_METRICS_ENABLED` | `true` | Enable streaming performance metrics |
 
 ### API Access
 
