@@ -52,9 +52,7 @@ func CreateMockHTTPClient() *MockHTTPClient {
 			body := req.Body
 			if body != nil {
 				defer func() {
-					if err := body.Close(); err != nil {
-						// Ignore close errors in mock
-					}
+					_ = body.Close() // Ignore close errors in mock
 				}()
 			}
 
