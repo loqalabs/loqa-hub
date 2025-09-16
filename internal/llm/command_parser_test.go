@@ -23,7 +23,9 @@ import (
 )
 
 func TestDetectCompoundUtterance(t *testing.T) {
-	cp := NewCommandParser("http://localhost:11434", "test-model")
+	// Use mock client to avoid external calls
+	mockClient := CreateMockHTTPClient()
+	cp := NewCommandParserWithClient("http://localhost:11434", "test-model", mockClient)
 
 	testCases := []struct {
 		name        string
@@ -105,7 +107,9 @@ func TestDetectCompoundUtterance(t *testing.T) {
 }
 
 func TestBuildMultiCommandPrompt(t *testing.T) {
-	cp := NewCommandParser("http://localhost:11434", "test-model")
+	// Use mock client to avoid external calls
+	mockClient := CreateMockHTTPClient()
+	cp := NewCommandParserWithClient("http://localhost:11434", "test-model", mockClient)
 
 	utterance := "turn on the lights and play music"
 	prompt := cp.buildMultiCommandPrompt(utterance)
@@ -134,7 +138,9 @@ func TestBuildMultiCommandPrompt(t *testing.T) {
 }
 
 func TestParseMultiCommandResponse(t *testing.T) {
-	cp := NewCommandParser("http://localhost:11434", "test-model")
+	// Use mock client to avoid external calls
+	mockClient := CreateMockHTTPClient()
+	cp := NewCommandParserWithClient("http://localhost:11434", "test-model", mockClient)
 
 	testCases := []struct {
 		name          string
@@ -265,7 +271,9 @@ func TestParseMultiCommandResponse(t *testing.T) {
 }
 
 func TestCreateCombinedCommand(t *testing.T) {
-	cp := NewCommandParser("http://localhost:11434", "test-model")
+	// Use mock client to avoid external calls
+	mockClient := CreateMockHTTPClient()
+	cp := NewCommandParserWithClient("http://localhost:11434", "test-model", mockClient)
 
 	testCases := []struct {
 		name           string

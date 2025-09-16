@@ -121,7 +121,9 @@ func TestPhraseBuffer(t *testing.T) {
 
 // Test StreamingCommandParser basic functionality
 func TestStreamingCommandParser_FallbackMode(t *testing.T) {
-	parser := NewStreamingCommandParser("http://localhost:11434", "test-model", false)
+	// Use mock client to avoid external calls
+	mockClient := CreateMockHTTPClient()
+	parser := NewStreamingCommandParserWithClient("http://localhost:11434", "test-model", false, mockClient)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -323,8 +325,11 @@ func TestStreamingComponents(t *testing.T) {
 	// Create mock TTS client
 	mockTTS := NewMockStreamingTTSClient()
 
-	// Initialize streaming components
-	components, err := NewStreamingComponents(cfg, mockTTS)
+	// Create mock HTTP client
+	mockHTTPClient := CreateMockHTTPClient()
+
+	// Initialize streaming components with mock client
+	components, err := NewStreamingComponentsWithMockClient(cfg, mockTTS, mockHTTPClient)
 	if err != nil {
 		// Expected to fail without real Ollama connection
 		t.Logf("Expected failure connecting to test Ollama: %v", err)

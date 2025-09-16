@@ -12,17 +12,17 @@ import (
 
 func TestBasicTypes(t *testing.T) {
 	// Test that our types are properly defined
-	var responseType PredictiveType = PredictiveOptimistic
+	responseType := PredictiveOptimistic
 	if responseType != "optimistic" {
 		t.Errorf("Expected 'optimistic', got %s", responseType)
 	}
 
-	var updateStrategy UpdateStrategy = UpdateSilent
+	updateStrategy := UpdateSilent
 	if updateStrategy != "silent" {
 		t.Errorf("Expected 'silent', got %s", updateStrategy)
 	}
 
-	var intentCategory IntentCategory = CategoryInformation
+	intentCategory := CategoryInformation
 	if intentCategory != "information" {
 		t.Errorf("Expected 'information', got %s", intentCategory)
 	}
@@ -58,7 +58,9 @@ func TestDeviceReliabilityBasic(t *testing.T) {
 
 func TestIntentCategoryExtraction(t *testing.T) {
 	tracker := NewDeviceReliabilityTracker()
-	mockParser := NewCommandParser("http://localhost:11434", "test-model")
+	// Use mock client to avoid external calls
+	mockClient := CreateMockHTTPClient()
+	mockParser := NewCommandParserWithClient("http://localhost:11434", "test-model", mockClient)
 	classifier := NewCommandClassifier(mockParser, tracker)
 
 	tests := []struct {

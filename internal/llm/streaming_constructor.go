@@ -51,6 +51,33 @@ func NewStreamingComponents(cfg *config.Config, ttsClient TextToSpeech) (*Stream
 		streamingCfg.Enabled,
 	)
 
+	return newStreamingComponentsInternal(cfg, ttsClient, streamingParser)
+}
+
+// NewStreamingComponentsWithMockClient creates streaming components with a mock HTTP client (for testing)
+func NewStreamingComponentsWithMockClient(cfg *config.Config, ttsClient TextToSpeech, httpClient HTTPClient) (*StreamingComponents, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("configuration cannot be nil")
+	}
+
+	streamingCfg := &cfg.Streaming
+
+	log.Printf("🌊 Initializing streaming components (enabled: %v)", streamingCfg.Enabled)
+
+	// Create streaming command parser with mock client
+	streamingParser := NewStreamingCommandParserWithClient(
+		streamingCfg.OllamaURL,
+		streamingCfg.Model,
+		streamingCfg.Enabled,
+		httpClient,
+	)
+
+	return newStreamingComponentsInternal(cfg, ttsClient, streamingParser)
+}
+
+func newStreamingComponentsInternal(cfg *config.Config, ttsClient TextToSpeech, streamingParser *StreamingCommandParser) (*StreamingComponents, error) {
+	streamingCfg := &cfg.Streaming
+
 	// Create TTS options from configuration
 	ttsOptions := &TTSOptions{
 		Voice:          cfg.TTS.Voice,

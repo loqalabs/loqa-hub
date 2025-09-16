@@ -253,7 +253,9 @@ func TestDeviceReliabilityTracker(t *testing.T) {
 }
 
 func TestCommandClassifier_ClassifyCommand(t *testing.T) {
-	mockParser := NewCommandParser("http://localhost:11434", "test-model")
+	// Use mock client to avoid external calls
+	mockClient := CreateMockHTTPClient()
+	mockParser := NewCommandParserWithClient("http://localhost:11434", "test-model", mockClient)
 
 	tracker := NewDeviceReliabilityTracker()
 	classifier := NewCommandClassifier(mockParser, tracker)
@@ -326,7 +328,11 @@ func TestAsyncExecutionPipeline(t *testing.T) {
 	}
 
 	pipeline := NewAsyncExecutionPipeline(mockSkillManager)
-	defer pipeline.Shutdown(context.Background())
+	defer func() {
+		if err := pipeline.Shutdown(context.Background()); err != nil {
+			t.Logf("Pipeline shutdown error: %v", err)
+		}
+	}()
 
 	// Test successful execution
 	t.Run("successful execution", func(t *testing.T) {
@@ -403,17 +409,31 @@ func TestAsyncExecutionPipeline(t *testing.T) {
 			t.Fatalf("failed to submit execution: %v", err)
 		}
 
-		// Wait for error status update
-		select {
-		case statusUpdate := <-statusChan:
-			if statusUpdate.Type != StatusError {
-				t.Errorf("expected error status update, got %s", statusUpdate.Type)
+		// Wait for final error status update (may receive progress updates for retries first)
+		// Allow extra time for retries (up to 2 retries with 1 second delay each)
+		var finalUpdate StatusUpdate
+		var receivedError bool
+		timeout := time.After(4 * time.Second)
+
+		for !receivedError {
+			select {
+			case statusUpdate := <-statusChan:
+				finalUpdate = statusUpdate
+				if statusUpdate.Type == StatusError {
+					receivedError = true
+				}
+				// Progress updates from retries are expected, continue waiting for error
+			case <-timeout:
+				t.Errorf("timeout waiting for error status update")
+				return
 			}
-			if statusUpdate.Success {
-				t.Errorf("expected failed status update, got success")
-			}
-		case <-time.After(1 * time.Second):
-			t.Errorf("timeout waiting for error status update")
+		}
+
+		if finalUpdate.Type != StatusError {
+			t.Errorf("expected final error status update, got %s", finalUpdate.Type)
+		}
+		if finalUpdate.Success {
+			t.Errorf("expected failed status update, got success")
 		}
 	})
 }
@@ -533,7 +553,9 @@ func TestPredictiveTypes(t *testing.T) {
 	}
 
 	tracker := NewDeviceReliabilityTracker()
-	mockParser := NewCommandParser("http://localhost:11434", "test-model")
+	// Use mock client to avoid external calls
+	mockClient := CreateMockHTTPClient()
+	mockParser := NewCommandParserWithClient("http://localhost:11434", "test-model", mockClient)
 	classifier := NewCommandClassifier(mockParser, tracker)
 
 	for i, tt := range tests {
