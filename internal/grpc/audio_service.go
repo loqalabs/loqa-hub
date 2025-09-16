@@ -75,10 +75,14 @@ type AudioService struct {
 	pb.UnimplementedAudioServiceServer
 	transcriber             llm.Transcriber
 	commandParser           *llm.CommandParser
+	streamingParser         *llm.StreamingCommandParser
+	audioPipeline           *llm.StreamingAudioPipeline
+	interruptHandler        *llm.StreamingInterruptHandler
 	ttsClient               llm.TextToSpeech
 	natsService             *messaging.NATSService
 	eventsStore             *storage.VoiceEventsStore
 	currentExecutionContext *CommandExecutionContext
+	streamingConfig         *config.StreamingConfig
 
 	// Multi-relay collision detection
 	arbitrationWindow       *ArbitrationWindow
