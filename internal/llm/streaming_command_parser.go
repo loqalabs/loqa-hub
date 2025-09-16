@@ -161,7 +161,11 @@ func (scp *StreamingCommandParser) processStreamingResponse(ctx context.Context,
 		result.ErrorChan <- fmt.Errorf("failed to create streaming request: %w", err)
 		return
 	}
-	defer streamResp.Body.Close()
+	defer func() {
+		if err := streamResp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close streaming response body: %v", err)
+		}
+	}()
 
 	// Process streaming response
 	scanner := bufio.NewScanner(streamResp.Body)

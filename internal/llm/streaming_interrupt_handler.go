@@ -134,7 +134,9 @@ func (sih *StreamingInterruptHandler) InterruptAllSessions(reason string) {
 		wg.Add(1)
 		go func(s *StreamingSession) {
 			defer wg.Done()
-			sih.InterruptSession(s.ID, reason)
+			if err := sih.InterruptSession(s.ID, reason); err != nil {
+				log.Printf("Warning: failed to interrupt session %s: %v", s.ID, err)
+			}
 		}(session)
 	}
 
