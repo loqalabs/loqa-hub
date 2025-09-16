@@ -24,7 +24,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/loqalabs/loqa-hub/internal/config"
@@ -37,6 +39,37 @@ import (
 	"go.uber.org/zap"
 )
 
+// RelayStream represents an active relay connection with arbitration data
+type RelayStream struct {
+	Stream          pb.AudioService_StreamAudioServer
+	RelayID         string
+	ConnectedAt     time.Time
+	WakeWordSignal  []float32
+	SignalStrength  float64
+	Status          RelayStatus
+	CancelChannel   chan struct{}
+}
+
+// RelayStatus represents the current state of a relay in arbitration
+type RelayStatus int
+
+const (
+	RelayStatusConnected RelayStatus = iota
+	RelayStatusContending
+	RelayStatusWinner
+	RelayStatusCancelled
+)
+
+// ArbitrationWindow manages the temporal window for relay arbitration
+type ArbitrationWindow struct {
+	StartTime    time.Time
+	WindowDuration time.Duration
+	Relays       map[string]*RelayStream
+	IsActive     bool
+	WinnerID     string
+	mutex        sync.RWMutex
+}
+
 // AudioService implements the gRPC AudioService
 type AudioService struct {
 	pb.UnimplementedAudioServiceServer
@@ -46,6 +79,12 @@ type AudioService struct {
 	natsService             *messaging.NATSService
 	eventsStore             *storage.VoiceEventsStore
 	currentExecutionContext *CommandExecutionContext
+
+	// Multi-relay collision detection
+	arbitrationWindow       *ArbitrationWindow
+	activeStreams          map[string]*RelayStream
+	streamsMutex           sync.RWMutex
+	arbitrationWindowDuration time.Duration
 }
 
 // CommandExecutionContext holds context information for command execution
@@ -189,28 +228,260 @@ func createAudioService(transcriber llm.Transcriber, ttsClient llm.TextToSpeech,
 	}()
 
 	return &AudioService{
-		transcriber:   transcriber,
-		commandParser: commandParser,
-		ttsClient:     ttsClient,
-		natsService:   natsService,
-		eventsStore:   eventsStore,
+		transcriber:               transcriber,
+		commandParser:             commandParser,
+		ttsClient:                 ttsClient,
+		natsService:               natsService,
+		eventsStore:               eventsStore,
+		activeStreams:             make(map[string]*RelayStream),
+		arbitrationWindowDuration: 300 * time.Millisecond, // Configurable arbitration window
 	}, nil
 }
 
-// StreamAudio handles bidirectional audio streaming from relay devices
+// startArbitrationWindow initiates a new arbitration window
+func (as *AudioService) startArbitrationWindow(relayID string, stream pb.AudioService_StreamAudioServer) *ArbitrationWindow {
+	as.streamsMutex.Lock()
+	defer as.streamsMutex.Unlock()
+
+	// Create new arbitration window
+	window := &ArbitrationWindow{
+		StartTime:      time.Now(),
+		WindowDuration: as.arbitrationWindowDuration,
+		Relays:         make(map[string]*RelayStream),
+		IsActive:       true,
+	}
+
+	// Add the initial relay
+	relayStream := &RelayStream{
+		Stream:        stream,
+		RelayID:       relayID,
+		ConnectedAt:   time.Now(),
+		Status:        RelayStatusContending,
+		CancelChannel: make(chan struct{}),
+	}
+
+	window.Relays[relayID] = relayStream
+	as.activeStreams[relayID] = relayStream
+	as.arbitrationWindow = window
+
+	logging.LogAudioProcessing(relayID, "arbitration_window_started",
+		zap.Duration("window_duration", as.arbitrationWindowDuration),
+		zap.String("first_relay", relayID),
+	)
+
+	// Start arbitration timer
+	go as.runArbitrationTimer(window)
+
+	return window
+}
+
+// joinArbitrationWindow adds a relay to an existing arbitration window
+func (as *AudioService) joinArbitrationWindow(relayID string, stream pb.AudioService_StreamAudioServer) bool {
+	as.streamsMutex.Lock()
+	defer as.streamsMutex.Unlock()
+
+	window := as.arbitrationWindow
+	if window == nil || !window.IsActive {
+		return false
+	}
+
+	// Check if window is still open
+	elapsed := time.Since(window.StartTime)
+	if elapsed > window.WindowDuration {
+		return false
+	}
+
+	// Add relay to window
+	relayStream := &RelayStream{
+		Stream:        stream,
+		RelayID:       relayID,
+		ConnectedAt:   time.Now(),
+		Status:        RelayStatusContending,
+		CancelChannel: make(chan struct{}),
+	}
+
+	window.Relays[relayID] = relayStream
+	as.activeStreams[relayID] = relayStream
+
+	logging.LogAudioProcessing(relayID, "arbitration_window_joined",
+		zap.Duration("elapsed", elapsed),
+		zap.Duration("remaining", window.WindowDuration-elapsed),
+		zap.Int("relay_count", len(window.Relays)),
+	)
+
+	return true
+}
+
+// runArbitrationTimer manages the arbitration window lifecycle
+func (as *AudioService) runArbitrationTimer(window *ArbitrationWindow) {
+	timer := time.NewTimer(window.WindowDuration)
+	defer timer.Stop()
+
+	<-timer.C
+
+	// Window closed, perform arbitration
+	as.performArbitration(window)
+}
+
+// performArbitration selects the winning relay based on signal strength
+func (as *AudioService) performArbitration(window *ArbitrationWindow) {
+	window.mutex.Lock()
+	defer window.mutex.Unlock()
+
+	if !window.IsActive {
+		return // Already arbitrated
+	}
+
+	logging.LogAudioProcessing("arbitration", "arbitration_starting",
+		zap.Int("relay_count", len(window.Relays)),
+	)
+
+	// Find relay with strongest wake word signal
+	var winnerID string
+	var maxSignalStrength float64
+
+	for relayID, relay := range window.Relays {
+		if relay.Status != RelayStatusContending {
+			continue
+		}
+
+		// Calculate signal strength from wake word audio
+		signalStrength := as.calculateSignalStrength(relay.WakeWordSignal)
+		relay.SignalStrength = signalStrength
+
+		logging.LogAudioProcessing(relayID, "arbitration_signal_analysis",
+			zap.Float64("signal_strength", signalStrength),
+			zap.Int("samples", len(relay.WakeWordSignal)),
+		)
+
+		if signalStrength > maxSignalStrength {
+			maxSignalStrength = signalStrength
+			winnerID = relayID
+		}
+	}
+
+	// Fallback to first relay if no clear winner
+	if winnerID == "" && len(window.Relays) > 0 {
+		for relayID := range window.Relays {
+			winnerID = relayID
+			break
+		}
+	}
+
+	// Mark winner and cancel losers
+	window.WinnerID = winnerID
+	window.IsActive = false
+
+	for relayID, relay := range window.Relays {
+		if relayID == winnerID {
+			relay.Status = RelayStatusWinner
+			logging.LogAudioProcessing(relayID, "arbitration_winner",
+				zap.Float64("signal_strength", relay.SignalStrength),
+				zap.Int("competing_relays", len(window.Relays)),
+			)
+		} else {
+			relay.Status = RelayStatusCancelled
+			close(relay.CancelChannel)
+			logging.LogAudioProcessing(relayID, "arbitration_cancelled",
+				zap.Float64("signal_strength", relay.SignalStrength),
+				zap.String("winner", winnerID),
+			)
+
+			// Send cancellation response to losing relay
+			go as.sendCancellationResponse(relay)
+		}
+	}
+
+	// Clear arbitration window
+	as.streamsMutex.Lock()
+	as.arbitrationWindow = nil
+	as.streamsMutex.Unlock()
+}
+
+// calculateSignalStrength computes RMS signal strength from audio samples
+func (as *AudioService) calculateSignalStrength(samples []float32) float64 {
+	if len(samples) == 0 {
+		return 0.0
+	}
+
+	var sum float64
+	for _, sample := range samples {
+		sum += float64(sample * sample)
+	}
+
+	rms := math.Sqrt(sum / float64(len(samples)))
+	return rms
+}
+
+// sendCancellationResponse sends a cancellation message to a losing relay
+func (as *AudioService) sendCancellationResponse(relay *RelayStream) {
+	response := &pb.AudioResponse{
+		RequestId:    relay.RelayID,
+		Transcription: "",
+		Command:      "relay_cancelled",
+		ResponseText: "Another relay is handling this request.",
+		Success:      false,
+	}
+
+	if err := relay.Stream.Send(response); err != nil {
+		logging.LogError(err, "Failed to send cancellation response",
+			zap.String("relay_id", relay.RelayID),
+		)
+	}
+}
+
+// isRelayActive checks if a relay should continue processing
+func (as *AudioService) isRelayActive(relayID string) bool {
+	as.streamsMutex.RLock()
+	defer as.streamsMutex.RUnlock()
+
+	relay, exists := as.activeStreams[relayID]
+	if !exists {
+		return false
+	}
+
+	return relay.Status == RelayStatusWinner || relay.Status == RelayStatusConnected
+}
+
+// cleanupRelay removes a relay from active tracking
+func (as *AudioService) cleanupRelay(relayID string) {
+	as.streamsMutex.Lock()
+	defer as.streamsMutex.Unlock()
+
+	delete(as.activeStreams, relayID)
+
+	logging.LogAudioProcessing(relayID, "relay_cleanup_completed")
+}
+
+// StreamAudio handles bidirectional audio streaming from relay devices with collision detection
 func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) error {
+	var relayID string
+	var wakeWordBuffer []float32
+
 	logging.Sugar.Info("🎙️  Hub: New audio stream connected")
+
+	// Cleanup on exit
+	defer func() {
+		if relayID != "" {
+			as.cleanupRelay(relayID)
+		}
+	}()
 
 	for {
 		// Receive audio chunk from relay
 		chunk, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
-			logging.Sugar.Info("🎙️  Hub: Audio stream ended")
+			logging.Sugar.Info("🎙️  Hub: Audio stream ended", zap.String("relay_id", relayID))
 			return nil
 		}
 		if err != nil {
-			logging.LogError(err, "Error receiving audio chunk")
+			logging.LogError(err, "Error receiving audio chunk", zap.String("relay_id", relayID))
 			return err
+		}
+
+		// Set relay ID from first chunk
+		if relayID == "" {
+			relayID = chunk.RelayId
 		}
 
 		logging.LogAudioProcessing(chunk.RelayId, "received",
@@ -218,8 +489,65 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			zap.Bool("wake_word", chunk.IsWakeWord),
 		)
 
-		// Process audio if it's end of speech
+		// Handle wake word detection for collision arbitration
+		if chunk.IsWakeWord {
+			// Convert audio data for signal analysis
+			audioData := bytesToFloat32Array(chunk.AudioData)
+			wakeWordBuffer = append(wakeWordBuffer, audioData...)
+
+			// Check if arbitration window exists
+			as.streamsMutex.RLock()
+			window := as.arbitrationWindow
+			as.streamsMutex.RUnlock()
+
+			if window == nil {
+				// Start new arbitration window
+				as.startArbitrationWindow(relayID, stream)
+			} else {
+				// Try to join existing window
+				if as.joinArbitrationWindow(relayID, stream) {
+					// Successfully joined, update wake word signal
+					as.streamsMutex.Lock()
+					if relay, exists := as.activeStreams[relayID]; exists {
+						relay.WakeWordSignal = wakeWordBuffer
+					}
+					as.streamsMutex.Unlock()
+				} else {
+					// Window closed, send cancellation
+					response := &pb.AudioResponse{
+						RequestId:    relayID,
+						Transcription: "",
+						Command:      "relay_too_late",
+						ResponseText: "Arbitration window closed. Please try again.",
+						Success:      false,
+					}
+					if err := stream.Send(response); err != nil {
+						logging.LogError(err, "Error sending too-late response")
+					}
+					return nil
+				}
+			}
+		}
+
+		// Handle end of speech processing
 		if chunk.IsEndOfSpeech {
+			// Check if this relay is still active (not cancelled during arbitration)
+			if !as.isRelayActive(relayID) {
+				logging.LogAudioProcessing(relayID, "relay_cancelled_before_processing")
+				return nil
+			}
+
+			// Wait for arbitration to complete if still in progress
+			maxWait := time.Now().Add(500 * time.Millisecond) // Max wait for arbitration
+			for as.arbitrationWindow != nil && time.Now().Before(maxWait) {
+				time.Sleep(10 * time.Millisecond)
+			}
+
+			// Final check if relay won arbitration
+			if !as.isRelayActive(relayID) {
+				logging.LogAudioProcessing(relayID, "relay_lost_arbitration")
+				return nil
+			}
 			logging.LogAudioProcessing(chunk.RelayId, "processing_utterance")
 
 			// Create voice event for tracking
