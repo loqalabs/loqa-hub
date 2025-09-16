@@ -38,15 +38,15 @@ type StreamingAudioPipeline struct {
 
 // PipelineContext manages a single streaming audio session
 type PipelineContext struct {
-	ID              string
-	AudioChunks     chan *AudioChunk
-	ErrorChan       chan error
-	Cancel          context.CancelFunc
-	Metrics         *PipelineMetrics
-	synthesisQueue  chan *SynthesisJob
-	completedJobs   chan *SynthesisJob
-	wg              sync.WaitGroup
-	mu              sync.RWMutex
+	ID             string
+	AudioChunks    chan *AudioChunk
+	ErrorChan      chan error
+	Cancel         context.CancelFunc
+	Metrics        *PipelineMetrics
+	synthesisQueue chan *SynthesisJob
+	completedJobs  chan *SynthesisJob
+	wg             sync.WaitGroup
+	mu             sync.RWMutex
 }
 
 // AudioChunk represents a synthesized audio segment
@@ -73,14 +73,14 @@ type SynthesisJob struct {
 
 // PipelineMetrics tracks audio pipeline performance
 type PipelineMetrics struct {
-	StartTime           time.Time
-	FirstAudioTime      time.Time
-	TotalPhrases        int
-	SynthesizedPhrases  int
-	FailedSynthesis     int
+	StartTime            time.Time
+	FirstAudioTime       time.Time
+	TotalPhrases         int
+	SynthesizedPhrases   int
+	FailedSynthesis      int
 	AverageSynthesisTime time.Duration
-	TotalAudioDuration  time.Duration
-	QueueHighWaterMark  int
+	TotalAudioDuration   time.Duration
+	QueueHighWaterMark   int
 }
 
 // NewStreamingAudioPipeline creates a new streaming audio pipeline

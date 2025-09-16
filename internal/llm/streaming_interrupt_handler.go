@@ -27,33 +27,33 @@ import (
 
 // StreamingInterruptHandler manages clean interruption of streaming operations
 type StreamingInterruptHandler struct {
-	activeStreams  map[string]*StreamingSession
-	mu             sync.RWMutex
-	gracePeriod    time.Duration
-	forceTimeout   time.Duration
+	activeStreams map[string]*StreamingSession
+	mu            sync.RWMutex
+	gracePeriod   time.Duration
+	forceTimeout  time.Duration
 }
 
 // StreamingSession represents an active streaming session that can be interrupted
 type StreamingSession struct {
-	ID                string
-	Context           context.Context
-	Cancel            context.CancelFunc
-	StreamingResult   *StreamingResult
-	AudioPipeline     *PipelineContext
-	CreatedAt         time.Time
-	InterruptedAt     *time.Time
-	CleanupCompleted  bool
-	InterruptReason   string
-	mu                sync.RWMutex
+	ID               string
+	Context          context.Context
+	Cancel           context.CancelFunc
+	StreamingResult  *StreamingResult
+	AudioPipeline    *PipelineContext
+	CreatedAt        time.Time
+	InterruptedAt    *time.Time
+	CleanupCompleted bool
+	InterruptReason  string
+	mu               sync.RWMutex
 }
 
 // InterruptReason constants for tracking why streams were interrupted
 const (
-	InterruptReasonUserRequest  = "user_request"
-	InterruptReasonNewCommand   = "new_command"
-	InterruptReasonTimeout      = "timeout"
-	InterruptReasonError        = "error"
-	InterruptReasonShutdown     = "shutdown"
+	InterruptReasonUserRequest = "user_request"
+	InterruptReasonNewCommand  = "new_command"
+	InterruptReasonTimeout     = "timeout"
+	InterruptReasonError       = "error"
+	InterruptReasonShutdown    = "shutdown"
 )
 
 // NewStreamingInterruptHandler creates a new interrupt handler
@@ -334,10 +334,10 @@ func (sih *StreamingInterruptHandler) GetSessionMetrics() *SessionMetrics {
 
 // SessionMetrics provides aggregate metrics for streaming sessions
 type SessionMetrics struct {
-	ActiveSessions   int                    `json:"active_sessions"`
-	InterruptedCount int                    `json:"interrupted_count"`
-	AverageDuration  time.Duration          `json:"average_duration"`
-	InterruptReasons map[string]int         `json:"interrupt_reasons"`
+	ActiveSessions   int            `json:"active_sessions"`
+	InterruptedCount int            `json:"interrupted_count"`
+	AverageDuration  time.Duration  `json:"average_duration"`
+	InterruptReasons map[string]int `json:"interrupt_reasons"`
 }
 
 // Shutdown gracefully shuts down the interrupt handler

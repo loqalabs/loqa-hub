@@ -171,6 +171,8 @@ func (cq *CommandQueue) Execute(ctx context.Context, executor CommandExecutor) (
 
 // rollbackCommands attempts to rollback previously executed commands
 func (cq *CommandQueue) rollbackCommands(ctx context.Context, executor CommandExecutor, completedItems []*CommandQueueItem) error {
+	var rollbackErrors []error
+
 	// Attempt rollback in reverse order
 	for i := len(completedItems) - 1; i >= 0; i-- {
 		item := completedItems[i]
@@ -180,9 +182,14 @@ func (cq *CommandQueue) rollbackCommands(ctx context.Context, executor CommandEx
 			err := executor.ExecuteCommand(ctx, rollbackCmd)
 			if err != nil {
 				log.Printf("❌ Failed to rollback command %d: %v", item.Index, err)
+				rollbackErrors = append(rollbackErrors, fmt.Errorf("rollback failed for command %d: %w", item.Index, err))
 				// Continue with other rollbacks even if one fails
 			}
 		}
+	}
+
+	if len(rollbackErrors) > 0 {
+		return fmt.Errorf("rollback completed with %d errors: %v", len(rollbackErrors), rollbackErrors)
 	}
 	return nil
 }

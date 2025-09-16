@@ -41,13 +41,13 @@ import (
 
 // RelayStream represents an active relay connection with arbitration data
 type RelayStream struct {
-	Stream          pb.AudioService_StreamAudioServer
-	RelayID         string
-	ConnectedAt     time.Time
-	WakeWordSignal  []float32
-	SignalStrength  float64
-	Status          RelayStatus
-	CancelChannel   chan struct{}
+	Stream         pb.AudioService_StreamAudioServer
+	RelayID        string
+	ConnectedAt    time.Time
+	WakeWordSignal []float32
+	SignalStrength float64
+	Status         RelayStatus
+	CancelChannel  chan struct{}
 }
 
 // RelayStatus represents the current state of a relay in arbitration
@@ -62,12 +62,12 @@ const (
 
 // ArbitrationWindow manages the temporal window for relay arbitration
 type ArbitrationWindow struct {
-	StartTime    time.Time
+	StartTime      time.Time
 	WindowDuration time.Duration
-	Relays       map[string]*RelayStream
-	IsActive     bool
-	WinnerID     string
-	mutex        sync.RWMutex
+	Relays         map[string]*RelayStream
+	IsActive       bool
+	WinnerID       string
+	mutex          sync.RWMutex
 }
 
 // AudioService implements the gRPC AudioService
@@ -75,19 +75,15 @@ type AudioService struct {
 	pb.UnimplementedAudioServiceServer
 	transcriber             llm.Transcriber
 	commandParser           *llm.CommandParser
-	streamingParser         *llm.StreamingCommandParser
-	audioPipeline           *llm.StreamingAudioPipeline
-	interruptHandler        *llm.StreamingInterruptHandler
 	ttsClient               llm.TextToSpeech
 	natsService             *messaging.NATSService
 	eventsStore             *storage.VoiceEventsStore
 	currentExecutionContext *CommandExecutionContext
-	streamingConfig         *config.StreamingConfig
 
 	// Multi-relay collision detection
-	arbitrationWindow       *ArbitrationWindow
-	activeStreams          map[string]*RelayStream
-	streamsMutex           sync.RWMutex
+	arbitrationWindow         *ArbitrationWindow
+	activeStreams             map[string]*RelayStream
+	streamsMutex              sync.RWMutex
 	arbitrationWindowDuration time.Duration
 }
 
@@ -440,11 +436,11 @@ func (as *AudioService) sendCancellationResponse(relay *RelayStream) {
 	}
 
 	response := &pb.AudioResponse{
-		RequestId:    relay.RelayID,
+		RequestId:     relay.RelayID,
 		Transcription: "",
-		Command:      "relay_cancelled",
-		ResponseText: "Another relay is handling this request.",
-		Success:      false,
+		Command:       "relay_cancelled",
+		ResponseText:  "Another relay is handling this request.",
+		Success:       false,
 	}
 
 	if err := relay.Stream.Send(response); err != nil {
@@ -539,11 +535,11 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 				} else {
 					// Window closed, send cancellation
 					response := &pb.AudioResponse{
-						RequestId:    relayID,
+						RequestId:     relayID,
 						Transcription: "",
-						Command:      "relay_too_late",
-						ResponseText: "Arbitration window closed. Please try again.",
-						Success:      false,
+						Command:       "relay_too_late",
+						ResponseText:  "Arbitration window closed. Please try again.",
+						Success:       false,
 					}
 					if err := stream.Send(response); err != nil {
 						logging.LogError(err, "Error sending too-late response")

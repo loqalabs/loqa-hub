@@ -264,14 +264,14 @@ func TestStreamingMetricsCollector(t *testing.T) {
 
 	// Create mock metrics
 	metrics := &StreamingMetrics{
-		StartTime:        time.Now().Add(-1 * time.Second),
-		FirstTokenTime:   time.Now().Add(-800 * time.Millisecond),
-		FirstPhraseTime:  time.Now().Add(-600 * time.Millisecond),
-		CompletionTime:   time.Now(),
-		TokenCount:       25,
-		PhraseCount:      3,
-		BufferOverflows:  0,
-		InterruptCount:   0,
+		StartTime:       time.Now().Add(-1 * time.Second),
+		FirstTokenTime:  time.Now().Add(-800 * time.Millisecond),
+		FirstPhraseTime: time.Now().Add(-600 * time.Millisecond),
+		CompletionTime:  time.Now(),
+		TokenCount:      25,
+		PhraseCount:     3,
+		BufferOverflows: 0,
+		InterruptCount:  0,
 	}
 
 	// Record session completion
@@ -301,7 +301,7 @@ func TestStreamingComponents(t *testing.T) {
 	// Create test configuration
 	cfg := &config.Config{
 		Streaming: config.StreamingConfig{
-			Enabled:              true,
+			Enabled:             true,
 			OllamaURL:           "http://localhost:11434",
 			Model:               "test-model",
 			MaxBufferTime:       2 * time.Second,

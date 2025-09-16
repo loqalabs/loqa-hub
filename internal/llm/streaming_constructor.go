@@ -252,21 +252,21 @@ func (sc *StreamingComponents) Shutdown() {
 // GetHealthStatus returns the health status of streaming components
 func (sc *StreamingComponents) GetHealthStatus() *StreamingHealthStatus {
 	return &StreamingHealthStatus{
-		ParserEnabled:         sc.Parser.enabled,
-		ActiveSessions:        len(sc.InterruptHandler.GetActiveSessionIDs()),
-		ActivePipelines:       len(sc.AudioPipeline.GetActivePipelines()),
-		MetricsEnabled:        sc.MetricsCollector.enabled,
-		OverallHealth:         sc.MetricsCollector.assessHealthStatus(),
-		LastHealthCheck:       time.Now(),
+		ParserEnabled:   sc.Parser.enabled,
+		ActiveSessions:  len(sc.InterruptHandler.GetActiveSessionIDs()),
+		ActivePipelines: len(sc.AudioPipeline.GetActivePipelines()),
+		MetricsEnabled:  sc.MetricsCollector.enabled,
+		OverallHealth:   sc.MetricsCollector.assessHealthStatus(),
+		LastHealthCheck: time.Now(),
 	}
 }
 
 // StreamingHealthStatus provides health information for streaming components
 type StreamingHealthStatus struct {
-	ParserEnabled     bool      `json:"parser_enabled"`
-	ActiveSessions    int       `json:"active_sessions"`
-	ActivePipelines   int       `json:"active_pipelines"`
-	MetricsEnabled    bool      `json:"metrics_enabled"`
-	OverallHealth     string    `json:"overall_health"`
-	LastHealthCheck   time.Time `json:"last_health_check"`
+	ParserEnabled   bool      `json:"parser_enabled"`
+	ActiveSessions  int       `json:"active_sessions"`
+	ActivePipelines int       `json:"active_pipelines"`
+	MetricsEnabled  bool      `json:"metrics_enabled"`
+	OverallHealth   string    `json:"overall_health"`
+	LastHealthCheck time.Time `json:"last_health_check"`
 }

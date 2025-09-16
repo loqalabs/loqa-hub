@@ -67,7 +67,7 @@ type TTSConfig struct {
 
 // StreamingConfig holds real-time streaming configuration
 type StreamingConfig struct {
-	Enabled              bool          // Enable streaming LLM responses
+	Enabled             bool          // Enable streaming LLM responses
 	OllamaURL           string        // Ollama API URL for streaming
 	Model               string        // LLM model to use for streaming
 	MaxBufferTime       time.Duration // Maximum time to buffer tokens before synthesis
@@ -135,7 +135,7 @@ func Load() (*Config, error) {
 			FallbackEnabled: getEnvBool("TTS_FALLBACK_ENABLED", true),
 		},
 		Streaming: StreamingConfig{
-			Enabled:              getEnvBool("STREAMING_ENABLED", false), // Default disabled for gradual rollout
+			Enabled:             getEnvBool("STREAMING_ENABLED", false), // Default disabled for gradual rollout
 			OllamaURL:           getEnvString("OLLAMA_URL", "http://ollama:11434"),
 			Model:               getEnvString("STREAMING_MODEL", "llama3.2:3b"),
 			MaxBufferTime:       getEnvDuration("STREAMING_MAX_BUFFER_TIME", 2*time.Second),

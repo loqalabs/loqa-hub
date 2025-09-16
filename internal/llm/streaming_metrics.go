@@ -24,76 +24,84 @@ import (
 	"time"
 )
 
+// Health status constants
+const (
+	HealthStatusCritical = "critical"
+	HealthStatusWarning  = "warning"
+	HealthStatusHealthy  = "healthy"
+	HealthStatusUnknown  = "unknown"
+)
+
 // StreamingMetricsCollector aggregates and tracks streaming performance metrics
 type StreamingMetricsCollector struct {
-	enabled            bool
-	sessionMetrics     map[string]*StreamingMetrics
-	aggregateMetrics   *AggregateMetrics
-	mu                 sync.RWMutex
-	startTime          time.Time
+	enabled          bool
+	sessionMetrics   map[string]*StreamingMetrics
+	aggregateMetrics *AggregateMetrics
+	mu               sync.RWMutex
+	startTime        time.Time
 }
 
 // AggregateMetrics holds system-wide streaming performance data
 type AggregateMetrics struct {
-	TotalSessions         int           `json:"total_sessions"`
-	CompletedSessions     int           `json:"completed_sessions"`
-	InterruptedSessions   int           `json:"interrupted_sessions"`
-	AverageFirstToken     time.Duration `json:"average_first_token"`
-	AverageFirstPhrase    time.Duration `json:"average_first_phrase"`
-	AverageCompletion     time.Duration `json:"average_completion"`
-	TotalTokens           int           `json:"total_tokens"`
-	TotalPhrases          int           `json:"total_phrases"`
-	StreamingEnabled      bool          `json:"streaming_enabled"`
-	FallbackUsage         int           `json:"fallback_usage"`
-	ErrorRate             float64       `json:"error_rate"`
-	ThroughputTokensPerSec float64      `json:"throughput_tokens_per_sec"`
-	LastUpdated           time.Time     `json:"last_updated"`
+	TotalSessions          int           `json:"total_sessions"`
+	CompletedSessions      int           `json:"completed_sessions"`
+	InterruptedSessions    int           `json:"interrupted_sessions"`
+	AverageFirstToken      time.Duration `json:"average_first_token"`
+	AverageFirstPhrase     time.Duration `json:"average_first_phrase"`
+	AverageCompletion      time.Duration `json:"average_completion"`
+	TotalTokens            int           `json:"total_tokens"`
+	TotalPhrases           int           `json:"total_phrases"`
+	StreamingEnabled       bool          `json:"streaming_enabled"`
+	FallbackUsage          int           `json:"fallback_usage"`
+	ErrorRate              float64       `json:"error_rate"`
+	ThroughputTokensPerSec float64       `json:"throughput_tokens_per_sec"`
+	LastUpdated            time.Time     `json:"last_updated"`
 }
 
 // StreamingPerformanceReport provides detailed performance analysis
 type StreamingPerformanceReport struct {
-	Summary              *AggregateMetrics                `json:"summary"`
-	RecentSessions       []*StreamingSessionReport       `json:"recent_sessions"`
-	PerformanceTrends    *PerformanceTrends               `json:"performance_trends"`
-	RecommendedSettings  *RecommendedSettings             `json:"recommended_settings"`
-	HealthStatus         string                           `json:"health_status"`
+	Summary             *AggregateMetrics         `json:"summary"`
+	RecentSessions      []*StreamingSessionReport `json:"recent_sessions"`
+	PerformanceTrends   *PerformanceTrends        `json:"performance_trends"`
+	RecommendedSettings *RecommendedSettings      `json:"recommended_settings"`
+	HealthStatus        string                    `json:"health_status"`
 }
 
 // StreamingSessionReport provides detailed session analysis
 type StreamingSessionReport struct {
-	SessionID            string        `json:"session_id"`
-	StartTime            time.Time     `json:"start_time"`
-	FirstTokenLatency    time.Duration `json:"first_token_latency"`
-	FirstPhraseLatency   time.Duration `json:"first_phrase_latency"`
-	TotalDuration        time.Duration `json:"total_duration"`
-	TokenCount           int           `json:"token_count"`
-	PhraseCount          int           `json:"phrase_count"`
-	BufferOverflows      int           `json:"buffer_overflows"`
-	InterruptCount       int           `json:"interrupt_count"`
-	WasInterrupted       bool          `json:"was_interrupted"`
-	CompletedNaturally   bool          `json:"completed_naturally"`
-	ErrorEncountered     bool          `json:"error_encountered"`
-	TokensPerSecond      float64       `json:"tokens_per_second"`
-	QualityScore         float64       `json:"quality_score"`
+	SessionID          string        `json:"session_id"`
+	StartTime          time.Time     `json:"start_time"`
+	FirstTokenLatency  time.Duration `json:"first_token_latency"`
+	FirstPhraseLatency time.Duration `json:"first_phrase_latency"`
+	TotalDuration      time.Duration `json:"total_duration"`
+	TokenCount         int           `json:"token_count"`
+	PhraseCount        int           `json:"phrase_count"`
+	BufferOverflows    int           `json:"buffer_overflows"`
+	InterruptCount     int           `json:"interrupt_count"`
+	WasInterrupted     bool          `json:"was_interrupted"`
+	CompletedNaturally bool          `json:"completed_naturally"`
+	ErrorEncountered   bool          `json:"error_encountered"`
+	TokensPerSecond    float64       `json:"tokens_per_second"`
+	QualityScore       float64       `json:"quality_score"`
 }
 
 // PerformanceTrends tracks streaming performance over time
 type PerformanceTrends struct {
-	LastHourSessions     int           `json:"last_hour_sessions"`
-	LastHourAvgLatency   time.Duration `json:"last_hour_avg_latency"`
-	LastHourErrorRate    float64       `json:"last_hour_error_rate"`
-	TrendDirection       string        `json:"trend_direction"` // "improving", "stable", "degrading"
-	LatencyTrend         []float64     `json:"latency_trend"`   // Last 10 measurements
-	ThroughputTrend      []float64     `json:"throughput_trend"`
+	LastHourSessions   int           `json:"last_hour_sessions"`
+	LastHourAvgLatency time.Duration `json:"last_hour_avg_latency"`
+	LastHourErrorRate  float64       `json:"last_hour_error_rate"`
+	TrendDirection     string        `json:"trend_direction"` // "improving", "stable", "degrading"
+	LatencyTrend       []float64     `json:"latency_trend"`   // Last 10 measurements
+	ThroughputTrend    []float64     `json:"throughput_trend"`
 }
 
 // RecommendedSettings provides optimization suggestions
 type RecommendedSettings struct {
-	OptimalBufferTime      time.Duration `json:"optimal_buffer_time"`
-	OptimalConcurrency     int           `json:"optimal_concurrency"`
-	RecommendStreaming     bool          `json:"recommend_streaming"`
-	EstimatedImprovement   string        `json:"estimated_improvement"`
-	ConfigurationChanges   []string      `json:"configuration_changes"`
+	OptimalBufferTime    time.Duration `json:"optimal_buffer_time"`
+	OptimalConcurrency   int           `json:"optimal_concurrency"`
+	RecommendStreaming   bool          `json:"recommend_streaming"`
+	EstimatedImprovement string        `json:"estimated_improvement"`
+	ConfigurationChanges []string      `json:"configuration_changes"`
 }
 
 // NewStreamingMetricsCollector creates a new metrics collector
@@ -247,7 +255,7 @@ func (smc *StreamingMetricsCollector) GetAggregateMetrics() *AggregateMetrics {
 func (smc *StreamingMetricsCollector) GeneratePerformanceReport() *StreamingPerformanceReport {
 	if !smc.enabled {
 		return &StreamingPerformanceReport{
-			Summary: &AggregateMetrics{StreamingEnabled: false},
+			Summary:      &AggregateMetrics{StreamingEnabled: false},
 			HealthStatus: "disabled",
 		}
 	}
@@ -395,16 +403,16 @@ func (smc *StreamingMetricsCollector) assessHealthStatus() string {
 	agg := smc.aggregateMetrics
 
 	if agg.ErrorRate > 0.2 {
-		return "critical"
+		return HealthStatusCritical
 	}
 	if agg.ErrorRate > 0.1 || agg.AverageFirstToken > 2*time.Second {
-		return "warning"
+		return HealthStatusWarning
 	}
 	if agg.CompletedSessions > 0 {
-		return "healthy"
+		return HealthStatusHealthy
 	}
 
-	return "unknown"
+	return HealthStatusUnknown
 }
 
 // ExportMetrics exports metrics in JSON format

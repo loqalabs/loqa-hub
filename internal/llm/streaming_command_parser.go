@@ -34,44 +34,44 @@ import (
 
 // StreamingCommandParser handles streaming command classification using LLM
 type StreamingCommandParser struct {
-	ollamaURL   string
-	model       string
-	client      *http.Client
-	enabled     bool
+	ollamaURL      string
+	model          string
+	client         *http.Client
+	enabled        bool
 	fallbackParser *CommandParser
 }
 
 // StreamingResult represents a streaming command parsing result
 type StreamingResult struct {
-	TokenStream    chan string           // Stream of tokens as they arrive
-	FinalCommand   chan *Command         // Final parsed command
-	ErrorChan      chan error            // Error notifications
-	Cancel         context.CancelFunc    // Cancellation function
-	VisualTokens   chan string           // Immediate visual feedback tokens
-	AudioPhrases   chan string           // Buffered phrases for TTS
-	Metrics        *StreamingMetrics     // Performance metrics
+	TokenStream  chan string        // Stream of tokens as they arrive
+	FinalCommand chan *Command      // Final parsed command
+	ErrorChan    chan error         // Error notifications
+	Cancel       context.CancelFunc // Cancellation function
+	VisualTokens chan string        // Immediate visual feedback tokens
+	AudioPhrases chan string        // Buffered phrases for TTS
+	Metrics      *StreamingMetrics  // Performance metrics
 }
 
 // StreamingMetrics tracks performance of streaming operations
 type StreamingMetrics struct {
-	StartTime        time.Time
-	FirstTokenTime   time.Time
-	FirstPhraseTime  time.Time
-	CompletionTime   time.Time
-	TokenCount       int
-	PhraseCount      int
-	BufferOverflows  int
-	InterruptCount   int
+	StartTime       time.Time
+	FirstTokenTime  time.Time
+	FirstPhraseTime time.Time
+	CompletionTime  time.Time
+	TokenCount      int
+	PhraseCount     int
+	BufferOverflows int
+	InterruptCount  int
 }
 
 // PhraseBuffer manages intelligent buffering for natural speech boundaries
 type PhraseBuffer struct {
-	tokens          []string
-	lastFlushTime   time.Time
-	boundaries      []string
-	maxBufferTime   time.Duration
-	maxTokens       int
-	mu              sync.RWMutex
+	tokens        []string
+	lastFlushTime time.Time
+	boundaries    []string
+	maxBufferTime time.Duration
+	maxTokens     int
+	mu            sync.RWMutex
 }
 
 // StreamingToken represents a token from the streaming response
@@ -99,10 +99,10 @@ func NewPhraseBuffer() *PhraseBuffer {
 	return &PhraseBuffer{
 		tokens: make([]string, 0, 100),
 		boundaries: []string{
-			".", "!", "?",                       // Sentence endings
-			", and", ", then", ", so",           // Natural pauses
-			", but", ", however", ", because",   // Connectors
-			"\n",                                // Paragraph breaks
+			".", "!", "?", // Sentence endings
+			", and", ", then", ", so", // Natural pauses
+			", but", ", however", ", because", // Connectors
+			"\n", // Paragraph breaks
 		},
 		maxBufferTime: 2 * time.Second,
 		maxTokens:     50, // Prevent runaway buffering
@@ -129,13 +129,13 @@ func (scp *StreamingCommandParser) ParseCommandStreaming(ctx context.Context, tr
 
 	// Create result channels
 	result := &StreamingResult{
-		TokenStream:   make(chan string, 100),
-		FinalCommand:  make(chan *Command, 1),
-		ErrorChan:     make(chan error, 1),
-		Cancel:        cancel,
-		VisualTokens:  make(chan string, 100),
-		AudioPhrases:  make(chan string, 10),
-		Metrics:       &StreamingMetrics{StartTime: time.Now()},
+		TokenStream:  make(chan string, 100),
+		FinalCommand: make(chan *Command, 1),
+		ErrorChan:    make(chan error, 1),
+		Cancel:       cancel,
+		VisualTokens: make(chan string, 100),
+		AudioPhrases: make(chan string, 10),
+		Metrics:      &StreamingMetrics{StartTime: time.Now()},
 	}
 
 	// Start streaming processing
@@ -294,7 +294,7 @@ func (pb *PhraseBuffer) AddToken(token string) string {
 
 	// Check for buffer limits (only if we have some content and time has passed)
 	if len(pb.tokens) >= pb.maxTokens ||
-	   (len(pb.tokens) > 0 && !pb.lastFlushTime.IsZero() && time.Since(pb.lastFlushTime) >= pb.maxBufferTime) {
+		(len(pb.tokens) > 0 && !pb.lastFlushTime.IsZero() && time.Since(pb.lastFlushTime) >= pb.maxBufferTime) {
 		return pb.flushLocked()
 	}
 
@@ -348,7 +348,7 @@ func (scp *StreamingCommandParser) createStreamingRequest(ctx context.Context, p
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("streaming request failed with status %d: %s", resp.StatusCode, string(body))
 	}
@@ -407,13 +407,13 @@ func (scp *StreamingCommandParser) parseFinalResponse(response string) (*Command
 // createFallbackResult creates a result for non-streaming fallback
 func (scp *StreamingCommandParser) createFallbackResult(cmd *Command) *StreamingResult {
 	result := &StreamingResult{
-		TokenStream:   make(chan string, 1),
-		FinalCommand:  make(chan *Command, 1),
-		ErrorChan:     make(chan error, 1),
-		Cancel:        func() {}, // No-op cancel
-		VisualTokens:  make(chan string, 1),
-		AudioPhrases:  make(chan string, 1),
-		Metrics:       &StreamingMetrics{StartTime: time.Now()},
+		TokenStream:  make(chan string, 1),
+		FinalCommand: make(chan *Command, 1),
+		ErrorChan:    make(chan error, 1),
+		Cancel:       func() {}, // No-op cancel
+		VisualTokens: make(chan string, 1),
+		AudioPhrases: make(chan string, 1),
+		Metrics:      &StreamingMetrics{StartTime: time.Now()},
 	}
 
 	// Send fallback data

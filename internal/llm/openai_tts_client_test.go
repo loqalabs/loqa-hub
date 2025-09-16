@@ -34,7 +34,7 @@ func TestOpenAITTSClient_NewOpenAITTSClient(t *testing.T) {
 		if r.URL.Path == "/audio/voices" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"voices": ["af_bella", "af_sky"]}`))
+			_, _ = w.Write([]byte(`{"voices": ["af_bella", "af_sky"]}`))
 		}
 	}))
 	defer server.Close()
@@ -77,7 +77,7 @@ func TestOpenAITTSClient_NewOpenAITTSClient(t *testing.T) {
 	}
 
 	// Clean up
-	client.Close()
+	_ = client.Close()
 }
 
 func TestOpenAITTSClient_NewOpenAITTSClient_InvalidURL(t *testing.T) {
@@ -109,11 +109,11 @@ func TestOpenAITTSClient_Synthesize(t *testing.T) {
 		case "/audio/voices":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"voices": ["af_bella"]}`))
+			_, _ = w.Write([]byte(`{"voices": ["af_bella"]}`))
 		case "/audio/speech":
 			w.Header().Set("Content-Type", "audio/mpeg")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("fake-mp3-data"))
+			_, _ = w.Write([]byte("fake-mp3-data"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -135,7 +135,7 @@ func TestOpenAITTSClient_Synthesize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected successful client creation, got error: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	options := &TTSOptions{
 		Voice:          "af_bella",

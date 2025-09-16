@@ -472,7 +472,7 @@ func (sm *SkillManager) loadManifest(skillPath string) (*SkillManifest, error) {
 		return nil, fmt.Errorf("invalid skill path: path traversal detected")
 	}
 
-	manifestPath := filepath.Join(skillPath, "skill.json")
+	manifestPath := filepath.Clean(filepath.Join(skillPath, "skill.json"))
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read manifest: %w", err)
@@ -526,7 +526,7 @@ func (sm *SkillManager) loadSkillConfig(skillID string) (*SkillConfig, error) {
 		return nil, err
 	}
 
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(filepath.Clean(configPath))
 	if err != nil {
 		return nil, err
 	}
