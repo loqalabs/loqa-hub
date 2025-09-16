@@ -68,16 +68,16 @@ type ExecutionTask struct {
 
 // ExecutionMetrics tracks pipeline performance
 type ExecutionMetrics struct {
-	mu                    sync.RWMutex
-	TotalExecutions       int64         `json:"total_executions"`
-	SuccessfulExecutions  int64         `json:"successful_executions"`
-	FailedExecutions      int64         `json:"failed_executions"`
-	RetriedExecutions     int64         `json:"retried_executions"`
-	AverageExecutionTime  time.Duration `json:"average_execution_time"`
-	AverageQueueTime      time.Duration `json:"average_queue_time"`
-	ConcurrentExecutions  int64         `json:"concurrent_executions"`
+	mu                   sync.RWMutex
+	TotalExecutions      int64         `json:"total_executions"`
+	SuccessfulExecutions int64         `json:"successful_executions"`
+	FailedExecutions     int64         `json:"failed_executions"`
+	RetriedExecutions    int64         `json:"retried_executions"`
+	AverageExecutionTime time.Duration `json:"average_execution_time"`
+	AverageQueueTime     time.Duration `json:"average_queue_time"`
+	ConcurrentExecutions int64         `json:"concurrent_executions"`
 	QueueDepth           int64         `json:"queue_depth"`
-	LastExecutionTime     time.Time     `json:"last_execution_time"`
+	LastExecutionTime    time.Time     `json:"last_execution_time"`
 }
 
 // AsyncExecutionResult represents the outcome of an async execution
@@ -96,9 +96,9 @@ type AsyncExecutionResult struct {
 func NewAsyncExecutionPipeline(skillManager SkillManagerInterface) *AsyncExecutionPipeline {
 	pipeline := &AsyncExecutionPipeline{
 		skillManager:     skillManager,
-		maxConcurrency:   5,  // Allow 5 concurrent skill executions
+		maxConcurrency:   5, // Allow 5 concurrent skill executions
 		executionTimeout: 30 * time.Second,
-		retryAttempts:    2,  // Retry failed executions twice
+		retryAttempts:    2, // Retry failed executions twice
 		retryDelay:       1 * time.Second,
 
 		activeExecutions: make(map[string]*ExecutionContext),
@@ -449,15 +449,15 @@ func (aep *AsyncExecutionPipeline) GetMetrics() *ExecutionMetrics {
 
 	// Return a copy to prevent external mutation
 	return &ExecutionMetrics{
-		TotalExecutions:       aep.executionMetrics.TotalExecutions,
-		SuccessfulExecutions:  aep.executionMetrics.SuccessfulExecutions,
-		FailedExecutions:      aep.executionMetrics.FailedExecutions,
-		RetriedExecutions:     aep.executionMetrics.RetriedExecutions,
-		AverageExecutionTime:  aep.executionMetrics.AverageExecutionTime,
-		AverageQueueTime:      aep.executionMetrics.AverageQueueTime,
-		ConcurrentExecutions:  aep.executionMetrics.ConcurrentExecutions,
+		TotalExecutions:      aep.executionMetrics.TotalExecutions,
+		SuccessfulExecutions: aep.executionMetrics.SuccessfulExecutions,
+		FailedExecutions:     aep.executionMetrics.FailedExecutions,
+		RetriedExecutions:    aep.executionMetrics.RetriedExecutions,
+		AverageExecutionTime: aep.executionMetrics.AverageExecutionTime,
+		AverageQueueTime:     aep.executionMetrics.AverageQueueTime,
+		ConcurrentExecutions: aep.executionMetrics.ConcurrentExecutions,
 		QueueDepth:           aep.executionMetrics.QueueDepth,
-		LastExecutionTime:     aep.executionMetrics.LastExecutionTime,
+		LastExecutionTime:    aep.executionMetrics.LastExecutionTime,
 	}
 }
 

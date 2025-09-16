@@ -29,11 +29,11 @@ import (
 
 // MockSkillManager implements SkillManagerInterface for testing
 type MockSkillManager struct {
-	shouldFindSkill   bool
-	shouldSucceed     bool
-	responseDelay     time.Duration
-	responseMessage   string
-	executionCount    int
+	shouldFindSkill bool
+	shouldSucceed   bool
+	responseDelay   time.Duration
+	responseMessage string
+	executionCount  int
 }
 
 func (msm *MockSkillManager) FindSkillForIntent(intent *skills.VoiceIntent) (skills.SkillPlugin, error) {
@@ -155,10 +155,10 @@ func TestPredictiveResponseEngine_ProcessCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockSkillManager := &MockSkillManager{
-				shouldFindSkill:   true,
-				shouldSucceed:     tt.mockShouldSucceed,
-				responseDelay:     100 * time.Millisecond,
-				responseMessage:   "Mock response",
+				shouldFindSkill: true,
+				shouldSucceed:   tt.mockShouldSucceed,
+				responseDelay:   100 * time.Millisecond,
+				responseMessage: "Mock response",
 			}
 
 			engine := NewPredictiveResponseEngine(mockSkillManager)
@@ -259,11 +259,11 @@ func TestCommandClassifier_ClassifyCommand(t *testing.T) {
 	classifier := NewCommandClassifier(mockParser, tracker)
 
 	tests := []struct {
-		name                    string
-		transcript              string
-		expectedIntentCategory  IntentCategory
-		expectedOperationType   OperationType
-		expectedResponseType    PredictiveType
+		name                   string
+		transcript             string
+		expectedIntentCategory IntentCategory
+		expectedOperationType  OperationType
+		expectedResponseType   PredictiveType
 	}{
 		{
 			name:                   "light control",
@@ -319,10 +319,10 @@ func TestCommandClassifier_ClassifyCommand(t *testing.T) {
 
 func TestAsyncExecutionPipeline(t *testing.T) {
 	mockSkillManager := &MockSkillManager{
-		shouldFindSkill:   true,
-		shouldSucceed:     true,
-		responseDelay:     50 * time.Millisecond,
-		responseMessage:   "Success",
+		shouldFindSkill: true,
+		shouldSucceed:   true,
+		responseDelay:   50 * time.Millisecond,
+		responseMessage: "Success",
 	}
 
 	pipeline := NewAsyncExecutionPipeline(mockSkillManager)
@@ -343,10 +343,10 @@ func TestAsyncExecutionPipeline(t *testing.T) {
 		}
 
 		classification := &CommandClassification{
-			Intent:           "lights.control",
-			Confidence:       0.9,
-			ResponseType:     PredictiveOptimistic,
-			UpdateStrategy:   UpdateErrorOnly,
+			Intent:         "lights.control",
+			Confidence:     0.9,
+			ResponseType:   PredictiveOptimistic,
+			UpdateStrategy: UpdateErrorOnly,
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -389,10 +389,10 @@ func TestAsyncExecutionPipeline(t *testing.T) {
 		}
 
 		classification := &CommandClassification{
-			Intent:           "lights.control",
-			Confidence:       0.9,
-			ResponseType:     PredictiveOptimistic,
-			UpdateStrategy:   UpdateErrorOnly,
+			Intent:         "lights.control",
+			Confidence:     0.9,
+			ResponseType:   PredictiveOptimistic,
+			UpdateStrategy: UpdateErrorOnly,
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -496,11 +496,11 @@ func (mtts *MockTTSClient) Close() error {
 
 func TestPredictiveTypes(t *testing.T) {
 	tests := []struct {
-		confidence       float64
-		reliability      float64
-		executionTime    time.Duration
-		operation        OperationType
-		expectedType     PredictiveType
+		confidence    float64
+		reliability   float64
+		executionTime time.Duration
+		operation     OperationType
+		expectedType  PredictiveType
 	}{
 		{
 			confidence:    0.95,
@@ -554,10 +554,10 @@ func TestPredictiveTypes(t *testing.T) {
 
 func BenchmarkPredictiveResponse(b *testing.B) {
 	mockSkillManager := &MockSkillManager{
-		shouldFindSkill:   true,
-		shouldSucceed:     true,
-		responseDelay:     10 * time.Millisecond,
-		responseMessage:   "Benchmark response",
+		shouldFindSkill: true,
+		shouldSucceed:   true,
+		responseDelay:   10 * time.Millisecond,
+		responseMessage: "Benchmark response",
 	}
 
 	engine := NewPredictiveResponseEngine(mockSkillManager)

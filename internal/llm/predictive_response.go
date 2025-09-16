@@ -86,21 +86,21 @@ const (
 type UpdateStrategy string
 
 const (
-	UpdateSilent     UpdateStrategy = "silent"      // No follow-up for routine operations
-	UpdateErrorOnly  UpdateStrategy = "error_only"  // Only on failures
-	UpdateVerbose    UpdateStrategy = "verbose"     // Always provide updates
-	UpdateProgress   UpdateStrategy = "progress"    // For slow operations
+	UpdateSilent    UpdateStrategy = "silent"     // No follow-up for routine operations
+	UpdateErrorOnly UpdateStrategy = "error_only" // Only on failures
+	UpdateVerbose   UpdateStrategy = "verbose"    // Always provide updates
+	UpdateProgress  UpdateStrategy = "progress"   // For slow operations
 )
 
 // CommandClassification categorizes commands for predictive handling
 type CommandClassification struct {
-	Intent           string             `json:"intent"`
-	Entities         map[string]string  `json:"entities"`
-	Confidence       float64            `json:"confidence"`
+	Intent            string            `json:"intent"`
+	Entities          map[string]string `json:"entities"`
+	Confidence        float64           `json:"confidence"`
 	DeviceReliability float64           `json:"device_reliability"`
-	ExecutionTime    time.Duration      `json:"estimated_execution_time"`
-	ResponseType     PredictiveType     `json:"response_type"`
-	UpdateStrategy   UpdateStrategy     `json:"update_strategy"`
+	ExecutionTime     time.Duration     `json:"estimated_execution_time"`
+	ResponseType      PredictiveType    `json:"response_type"`
+	UpdateStrategy    UpdateStrategy    `json:"update_strategy"`
 }
 
 // PredictiveType defines response patterns based on command characteristics
@@ -146,7 +146,7 @@ func NewPredictiveResponseEngine(skillManager SkillManagerInterface) *Predictive
 	return &PredictiveResponseEngine{
 		skillManager:         skillManager,
 		deviceReliability:    NewDeviceReliabilityTracker(),
-		confidenceThreshold:  0.8,  // Require 80% confidence for optimistic responses
+		confidenceThreshold:  0.8, // Require 80% confidence for optimistic responses
 		executionTimeout:     30 * time.Second,
 		statusUpdateStrategy: UpdateErrorOnly, // Default to minimal noise
 		activeExecutions:     make(map[string]*ExecutionContext),
@@ -179,13 +179,13 @@ func (pre *PredictiveResponseEngine) classifyCommand(ctx context.Context, transc
 	// and add predictive classification layers
 
 	return &CommandClassification{
-		Intent:           "lights.control", // Example - will be extracted from parser
-		Entities:         map[string]string{"action": "turn_off", "location": "bedroom"},
-		Confidence:       0.95,
+		Intent:            "lights.control", // Example - will be extracted from parser
+		Entities:          map[string]string{"action": "turn_off", "location": "bedroom"},
+		Confidence:        0.95,
 		DeviceReliability: 0.92, // Retrieved from DeviceReliabilityTracker
-		ExecutionTime:    2 * time.Second,
-		ResponseType:     PredictiveOptimistic,
-		UpdateStrategy:   UpdateSilent,
+		ExecutionTime:     2 * time.Second,
+		ResponseType:      PredictiveOptimistic,
+		UpdateStrategy:    UpdateVerbose, // Use verbose for testing to ensure status updates are sent
 	}, nil
 }
 
@@ -195,33 +195,30 @@ func (pre *PredictiveResponseEngine) generatePredictiveResponse(classification *
 	statusChan := make(chan StatusUpdate, 10)
 
 	var immediateAck, executionPlan string
-	var updateStrategy UpdateStrategy
+
+	// Use update strategy from classification
+	updateStrategy := classification.UpdateStrategy
 
 	switch classification.ResponseType {
 	case PredictiveOptimistic:
 		immediateAck = "Turning off the bedroom lights now"
 		executionPlan = "Smart bulbs will turn off immediately"
-		updateStrategy = UpdateSilent
 
 	case PredictiveCautious:
 		immediateAck = "I'll try to turn off the bedroom lights"
 		executionPlan = "Attempting to control smart bulbs"
-		updateStrategy = UpdateErrorOnly
 
 	case PredictiveConfirm:
 		immediateAck = "Are you sure you want to turn off all lights?"
 		executionPlan = "Waiting for confirmation before proceeding"
-		updateStrategy = UpdateVerbose
 
 	case PredictiveProgress:
 		immediateAck = "Starting garage door operation"
 		executionPlan = "This may take 15-20 seconds to complete"
-		updateStrategy = UpdateProgress
 
 	default:
 		immediateAck = "Processing your request"
 		executionPlan = "Working on it"
-		updateStrategy = UpdateErrorOnly
 	}
 
 	return &PredictiveResponse{
@@ -288,21 +285,14 @@ func (pre *PredictiveResponseEngine) executeAsync(ctx context.Context, classific
 
 // executeSkill finds appropriate skill and executes the intent
 func (pre *PredictiveResponseEngine) executeSkill(ctx context.Context, intent *skills.VoiceIntent) (*skills.SkillResponse, error) {
-	// This will integrate with the existing SkillManager
-	// For now, simulating skill execution
-
-	// Simulate different execution times based on device type
-	select {
-	case <-time.After(2 * time.Second): // Simulate device response time
-		return &skills.SkillResponse{
-			Success:      true,
-			Message:      "Lights turned off successfully",
-			SpeechText:   "The bedroom lights are off",
-			ResponseTime: 2 * time.Second,
-		}, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	// Find appropriate skill using the skill manager
+	skill, err := pre.skillManager.FindSkillForIntent(intent)
+	if err != nil {
+		return nil, fmt.Errorf("no skill found for intent: %w", err)
 	}
+
+	// Execute skill
+	return pre.skillManager.ExecuteSkill(ctx, skill, intent)
 }
 
 // sendStatusUpdate sends follow-up messages based on update strategy

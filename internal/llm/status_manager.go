@@ -33,15 +33,15 @@ type StatusManager struct {
 	ttsClient TextToSpeech
 
 	// Status tracking
-	mu              sync.RWMutex
-	activeUpdates   map[string]*StatusContext
-	updateHistory   map[string][]*StatusUpdate
-	errorPatterns   map[string]*ErrorPattern
+	mu            sync.RWMutex
+	activeUpdates map[string]*StatusContext
+	updateHistory map[string][]*StatusUpdate
+	errorPatterns map[string]*ErrorPattern
 
 	// Configuration
-	maxHistorySize    int
-	errorCooldown     time.Duration
-	updateTimeout     time.Duration
+	maxHistorySize     int
+	errorCooldown      time.Duration
+	updateTimeout      time.Duration
 	enableAudioUpdates bool
 
 	// Metrics
@@ -50,16 +50,16 @@ type StatusManager struct {
 
 // StatusContext tracks the context for status updates
 type StatusContext struct {
-	ExecutionID       string
-	UpdateStrategy    UpdateStrategy
-	DeviceID          string
-	LastUpdate        time.Time
-	ErrorCount        int
-	SuccessCount      int
-	UpdateChan        chan StatusUpdate
-	CancelFunc        context.CancelFunc
-	AudioEnabled      bool
-	Priority          UpdatePriority
+	ExecutionID    string
+	UpdateStrategy UpdateStrategy
+	DeviceID       string
+	LastUpdate     time.Time
+	ErrorCount     int
+	SuccessCount   int
+	UpdateChan     chan StatusUpdate
+	CancelFunc     context.CancelFunc
+	AudioEnabled   bool
+	Priority       UpdatePriority
 }
 
 // UpdatePriority determines the importance of status updates
@@ -95,38 +95,38 @@ type RecoveryAction struct {
 type RecoveryType string
 
 const (
-	RecoveryRetry      RecoveryType = "retry"        // Simple retry operation
-	RecoveryReset      RecoveryType = "reset"        // Reset device connection
-	RecoveryFallback   RecoveryType = "fallback"     // Use alternative method
-	RecoverySkip       RecoveryType = "skip"         // Skip and notify
-	RecoveryEscalate   RecoveryType = "escalate"     // Escalate to user attention
+	RecoveryRetry    RecoveryType = "retry"    // Simple retry operation
+	RecoveryReset    RecoveryType = "reset"    // Reset device connection
+	RecoveryFallback RecoveryType = "fallback" // Use alternative method
+	RecoverySkip     RecoveryType = "skip"     // Skip and notify
+	RecoveryEscalate RecoveryType = "escalate" // Escalate to user attention
 )
 
 // StatusMetrics tracks status update performance
 type StatusMetrics struct {
-	mu                    sync.RWMutex
-	TotalUpdates          int64         `json:"total_updates"`
-	SuccessfulUpdates     int64         `json:"successful_updates"`
-	FailedUpdates         int64         `json:"failed_updates"`
-	AudioUpdates          int64         `json:"audio_updates"`
-	SilentUpdates         int64         `json:"silent_updates"`
-	ErrorRecoveries       int64         `json:"error_recoveries"`
-	AverageUpdateLatency  time.Duration `json:"average_update_latency"`
-	ErrorPatternDetected  int64         `json:"error_patterns_detected"`
-	RecoverySuccessRate   float64       `json:"recovery_success_rate"`
+	mu                   sync.RWMutex
+	TotalUpdates         int64         `json:"total_updates"`
+	SuccessfulUpdates    int64         `json:"successful_updates"`
+	FailedUpdates        int64         `json:"failed_updates"`
+	AudioUpdates         int64         `json:"audio_updates"`
+	SilentUpdates        int64         `json:"silent_updates"`
+	ErrorRecoveries      int64         `json:"error_recoveries"`
+	AverageUpdateLatency time.Duration `json:"average_update_latency"`
+	ErrorPatternDetected int64         `json:"error_patterns_detected"`
+	RecoverySuccessRate  float64       `json:"recovery_success_rate"`
 }
 
 // NewStatusManager creates a new intelligent status manager
 func NewStatusManager(ttsClient TextToSpeech) *StatusManager {
 	return &StatusManager{
-		ttsClient:       ttsClient,
-		activeUpdates:   make(map[string]*StatusContext),
-		updateHistory:   make(map[string][]*StatusUpdate),
-		errorPatterns:   make(map[string]*ErrorPattern),
+		ttsClient:     ttsClient,
+		activeUpdates: make(map[string]*StatusContext),
+		updateHistory: make(map[string][]*StatusUpdate),
+		errorPatterns: make(map[string]*ErrorPattern),
 
-		maxHistorySize:    50, // Keep 50 updates per execution
-		errorCooldown:     5 * time.Minute,
-		updateTimeout:     10 * time.Second,
+		maxHistorySize:     50, // Keep 50 updates per execution
+		errorCooldown:      5 * time.Minute,
+		updateTimeout:      10 * time.Second,
 		enableAudioUpdates: true,
 
 		metrics: &StatusMetrics{},
@@ -206,7 +206,7 @@ func (sm *StatusManager) shouldSendUpdate(statusCtx *StatusContext, update *Stat
 	case UpdateErrorOnly:
 		// Send errors and critical successes
 		return update.Type == StatusError ||
-			   (update.Type == StatusSuccess && statusCtx.Priority == PriorityCritical)
+			(update.Type == StatusSuccess && statusCtx.Priority == PriorityCritical)
 
 	case UpdateVerbose:
 		// Send all updates
@@ -215,8 +215,8 @@ func (sm *StatusManager) shouldSendUpdate(statusCtx *StatusContext, update *Stat
 	case UpdateProgress:
 		// Send progress, errors, and final results
 		return update.Type == StatusProgress ||
-			   update.Type == StatusError ||
-			   update.Type == StatusSuccess
+			update.Type == StatusError ||
+			update.Type == StatusSuccess
 
 	default:
 		// Default to error-only
@@ -487,7 +487,7 @@ func (sm *StatusManager) hasRecentErrors(deviceID string) bool {
 
 	for _, pattern := range sm.errorPatterns {
 		if pattern.DeviceID == deviceID &&
-		   time.Since(pattern.LastOccurrence) < sm.errorCooldown {
+			time.Since(pattern.LastOccurrence) < sm.errorCooldown {
 			return true
 		}
 	}

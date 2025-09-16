@@ -27,14 +27,14 @@ import (
 
 // CommandClassifier enhances basic command parsing with predictive classification
 type CommandClassifier struct {
-	baseParser        *CommandParser
+	baseParser         *CommandParser
 	reliabilityTracker *DeviceReliabilityTracker
-	deviceTimings     map[string]time.Duration // Known execution times for different devices
+	deviceTimings      map[string]time.Duration // Known execution times for different devices
 
 	// Classification rules
-	highConfidenceThreshold  float64
-	reliabilityThreshold     float64
-	slowOperationThreshold   time.Duration
+	highConfidenceThreshold float64
+	reliabilityThreshold    float64
+	slowOperationThreshold  time.Duration
 }
 
 // IntentCategory represents different types of user intents and capabilities
@@ -42,7 +42,7 @@ type IntentCategory string
 
 const (
 	// Core system capabilities
-	CategoryInformation   IntentCategory = "information"    // Web search, knowledge queries, calculations
+	CategoryInformation   IntentCategory = "information"   // Web search, knowledge queries, calculations
 	CategoryCommunication IntentCategory = "communication" // Email, messaging, calls, social media
 	CategoryProductivity  IntentCategory = "productivity"  // Calendar, reminders, notes, tasks
 	CategoryEntertainment IntentCategory = "entertainment" // Music, videos, games, stories
@@ -54,23 +54,23 @@ const (
 	CategoryEducation     IntentCategory = "education"     // Learning, tutorials, language, skills
 
 	// Home automation (subset of broader capabilities)
-	CategorySmartHome     IntentCategory = "smart_home"    // IoT devices, lights, climate, security
-	CategoryMultimedia    IntentCategory = "multimedia"    // Local media playback, streaming control
+	CategorySmartHome  IntentCategory = "smart_home" // IoT devices, lights, climate, security
+	CategoryMultimedia IntentCategory = "multimedia" // Local media playback, streaming control
 
 	// System and utility
-	CategorySystem        IntentCategory = "system"        // System settings, configurations, diagnostics
-	CategoryDeveloper     IntentCategory = "developer"     // Development tools, coding assistance, APIs
-	CategoryGeneral       IntentCategory = "general"       // Conversational, misc requests
+	CategorySystem    IntentCategory = "system"    // System settings, configurations, diagnostics
+	CategoryDeveloper IntentCategory = "developer" // Development tools, coding assistance, APIs
+	CategoryGeneral   IntentCategory = "general"   // Conversational, misc requests
 )
 
 // OperationType represents the kind of operation being performed
 type OperationType string
 
 const (
-	OperationControl    OperationType = "control"      // Basic on/off/adjust
-	OperationQuery      OperationType = "query"        // Status requests
-	OperationSequence   OperationType = "sequence"     // Multi-step operations
-	OperationCritical   OperationType = "critical"     // Security/safety operations
+	OperationControl     OperationType = "control"     // Basic on/off/adjust
+	OperationQuery       OperationType = "query"       // Status requests
+	OperationSequence    OperationType = "sequence"    // Multi-step operations
+	OperationCritical    OperationType = "critical"    // Security/safety operations
 	OperationMaintenance OperationType = "maintenance" // System operations
 )
 
@@ -82,8 +82,8 @@ func NewCommandClassifier(baseParser *CommandParser, reliabilityTracker *DeviceR
 		deviceTimings:      initializeDeviceTimings(),
 
 		highConfidenceThreshold: 0.85,
-		reliabilityThreshold:   0.80,
-		slowOperationThreshold: 5 * time.Second,
+		reliabilityThreshold:    0.80,
+		slowOperationThreshold:  5 * time.Second,
 	}
 }
 
@@ -111,13 +111,13 @@ func (cc *CommandClassifier) ClassifyCommand(ctx context.Context, transcript str
 	updateStrategy := cc.determineUpdateStrategy(responseType, intentCategory, operationType, estimatedTime)
 
 	return &CommandClassification{
-		Intent:           command.Intent,
-		Entities:         command.Entities,
-		Confidence:       command.Confidence,
+		Intent:            command.Intent,
+		Entities:          command.Entities,
+		Confidence:        command.Confidence,
 		DeviceReliability: targetReliability, // Keep field name for compatibility
-		ExecutionTime:    estimatedTime,
-		ResponseType:     responseType,
-		UpdateStrategy:   updateStrategy,
+		ExecutionTime:     estimatedTime,
+		ResponseType:      responseType,
+		UpdateStrategy:    updateStrategy,
 	}, nil
 }
 
@@ -128,90 +128,90 @@ func (cc *CommandClassifier) extractIntentCategory(intent string, entities map[s
 	// Weather requests (check before general information)
 	switch {
 	case strings.Contains(intentLower, "weather") || strings.Contains(intentLower, "temperature") ||
-		 strings.Contains(intentLower, "forecast") || strings.Contains(intentLower, "rain") ||
-		 strings.Contains(intentLower, "snow") || strings.Contains(intentLower, "sunny"):
+		strings.Contains(intentLower, "forecast") || strings.Contains(intentLower, "rain") ||
+		strings.Contains(intentLower, "snow") || strings.Contains(intentLower, "sunny"):
 		return CategoryWeather
 
 	// Information and knowledge requests
 	case strings.Contains(intentLower, "what") || strings.Contains(intentLower, "how") ||
-		 strings.Contains(intentLower, "why") || strings.Contains(intentLower, "explain") ||
-		 strings.Contains(intentLower, "search") || strings.Contains(intentLower, "find") ||
-		 strings.Contains(intentLower, "calculate") || strings.Contains(intentLower, "convert"):
+		strings.Contains(intentLower, "why") || strings.Contains(intentLower, "explain") ||
+		strings.Contains(intentLower, "search") || strings.Contains(intentLower, "find") ||
+		strings.Contains(intentLower, "calculate") || strings.Contains(intentLower, "convert"):
 		return CategoryInformation
 
 	// News and current events
 	case strings.Contains(intentLower, "news") || strings.Contains(intentLower, "headlines") ||
-		 strings.Contains(intentLower, "current events") || strings.Contains(intentLower, "breaking"):
+		strings.Contains(intentLower, "current events") || strings.Contains(intentLower, "breaking"):
 		return CategoryNews
 
 	// Entertainment and media
 	case strings.Contains(intentLower, "play") || strings.Contains(intentLower, "music") ||
-		 strings.Contains(intentLower, "song") || strings.Contains(intentLower, "video") ||
-		 strings.Contains(intentLower, "movie") || strings.Contains(intentLower, "podcast") ||
-		 strings.Contains(intentLower, "radio") || strings.Contains(intentLower, "stream"):
+		strings.Contains(intentLower, "song") || strings.Contains(intentLower, "video") ||
+		strings.Contains(intentLower, "movie") || strings.Contains(intentLower, "podcast") ||
+		strings.Contains(intentLower, "radio") || strings.Contains(intentLower, "stream"):
 		return CategoryEntertainment
 
 	// Productivity and organization
 	case strings.Contains(intentLower, "reminder") || strings.Contains(intentLower, "schedule") ||
-		 strings.Contains(intentLower, "calendar") || strings.Contains(intentLower, "appointment") ||
-		 strings.Contains(intentLower, "note") || strings.Contains(intentLower, "task") ||
-		 strings.Contains(intentLower, "todo") || strings.Contains(intentLower, "meeting"):
+		strings.Contains(intentLower, "calendar") || strings.Contains(intentLower, "appointment") ||
+		strings.Contains(intentLower, "note") || strings.Contains(intentLower, "task") ||
+		strings.Contains(intentLower, "todo") || strings.Contains(intentLower, "meeting"):
 		return CategoryProductivity
 
 	// Communication
 	case strings.Contains(intentLower, "call") || strings.Contains(intentLower, "message") ||
-		 strings.Contains(intentLower, "email") || strings.Contains(intentLower, "text") ||
-		 strings.Contains(intentLower, "send") || strings.Contains(intentLower, "contact"):
+		strings.Contains(intentLower, "email") || strings.Contains(intentLower, "text") ||
+		strings.Contains(intentLower, "send") || strings.Contains(intentLower, "contact"):
 		return CategoryCommunication
 
 	// Navigation and travel
 	case strings.Contains(intentLower, "directions") || strings.Contains(intentLower, "navigate") ||
-		 strings.Contains(intentLower, "route") || strings.Contains(intentLower, "traffic") ||
-		 strings.Contains(intentLower, "map") || strings.Contains(intentLower, "location") ||
-		 strings.Contains(intentLower, "distance") || strings.Contains(intentLower, "travel"):
+		strings.Contains(intentLower, "route") || strings.Contains(intentLower, "traffic") ||
+		strings.Contains(intentLower, "map") || strings.Contains(intentLower, "location") ||
+		strings.Contains(intentLower, "distance") || strings.Contains(intentLower, "travel"):
 		return CategoryNavigation
 
 	// Shopping and commerce
 	case strings.Contains(intentLower, "buy") || strings.Contains(intentLower, "purchase") ||
-		 strings.Contains(intentLower, "order") || strings.Contains(intentLower, "shop") ||
-		 strings.Contains(intentLower, "price") || strings.Contains(intentLower, "deal") ||
-		 strings.Contains(intentLower, "compare") || strings.Contains(intentLower, "cart"):
+		strings.Contains(intentLower, "order") || strings.Contains(intentLower, "shop") ||
+		strings.Contains(intentLower, "price") || strings.Contains(intentLower, "deal") ||
+		strings.Contains(intentLower, "compare") || strings.Contains(intentLower, "cart"):
 		return CategoryShopping
 
 	// Health and fitness
 	case strings.Contains(intentLower, "health") || strings.Contains(intentLower, "fitness") ||
-		 strings.Contains(intentLower, "exercise") || strings.Contains(intentLower, "calories") ||
-		 strings.Contains(intentLower, "steps") || strings.Contains(intentLower, "sleep") ||
-		 strings.Contains(intentLower, "heart rate") || strings.Contains(intentLower, "medical"):
+		strings.Contains(intentLower, "exercise") || strings.Contains(intentLower, "calories") ||
+		strings.Contains(intentLower, "steps") || strings.Contains(intentLower, "sleep") ||
+		strings.Contains(intentLower, "heart rate") || strings.Contains(intentLower, "medical"):
 		return CategoryHealth
 
 	// Education and learning
 	case strings.Contains(intentLower, "learn") || strings.Contains(intentLower, "teach") ||
-		 strings.Contains(intentLower, "lesson") || strings.Contains(intentLower, "course") ||
-		 strings.Contains(intentLower, "tutorial") || strings.Contains(intentLower, "study") ||
-		 strings.Contains(intentLower, "language") || strings.Contains(intentLower, "practice"):
+		strings.Contains(intentLower, "lesson") || strings.Contains(intentLower, "course") ||
+		strings.Contains(intentLower, "tutorial") || strings.Contains(intentLower, "study") ||
+		strings.Contains(intentLower, "language") || strings.Contains(intentLower, "practice"):
 		return CategoryEducation
 
 	// Smart home and IoT (subset of broader capabilities)
 	case strings.Contains(intentLower, "light") || strings.Contains(intentLower, "heat") ||
-		 strings.Contains(intentLower, "cool") || strings.Contains(intentLower, "door") ||
-		 strings.Contains(intentLower, "lock") || strings.Contains(intentLower, "alarm") ||
-		 strings.Contains(intentLower, "security") || strings.Contains(intentLower, "thermostat") ||
-		 strings.Contains(intentLower, "garage") || strings.Contains(intentLower, "smart"):
+		strings.Contains(intentLower, "cool") || strings.Contains(intentLower, "door") ||
+		strings.Contains(intentLower, "lock") || strings.Contains(intentLower, "alarm") ||
+		strings.Contains(intentLower, "security") || strings.Contains(intentLower, "thermostat") ||
+		strings.Contains(intentLower, "garage") || strings.Contains(intentLower, "smart"):
 		return CategorySmartHome
 
 	// System and configuration
 	case strings.Contains(intentLower, "setting") || strings.Contains(intentLower, "config") ||
-		 strings.Contains(intentLower, "system") || strings.Contains(intentLower, "restart") ||
-		 strings.Contains(intentLower, "update") || strings.Contains(intentLower, "install") ||
-		 strings.Contains(intentLower, "debug") || strings.Contains(intentLower, "status"):
+		strings.Contains(intentLower, "system") || strings.Contains(intentLower, "restart") ||
+		strings.Contains(intentLower, "update") || strings.Contains(intentLower, "install") ||
+		strings.Contains(intentLower, "debug") || strings.Contains(intentLower, "status"):
 		return CategorySystem
 
 	// Developer tools and programming
 	case strings.Contains(intentLower, "code") || strings.Contains(intentLower, "program") ||
-		 strings.Contains(intentLower, "debug") || strings.Contains(intentLower, "api") ||
-		 strings.Contains(intentLower, "deploy") || strings.Contains(intentLower, "build") ||
-		 strings.Contains(intentLower, "test") || strings.Contains(intentLower, "git"):
+		strings.Contains(intentLower, "debug") || strings.Contains(intentLower, "api") ||
+		strings.Contains(intentLower, "deploy") || strings.Contains(intentLower, "build") ||
+		strings.Contains(intentLower, "test") || strings.Contains(intentLower, "git"):
 		return CategoryDeveloper
 	}
 
@@ -239,25 +239,25 @@ func (cc *CommandClassifier) extractOperationType(intent string, entities map[st
 
 	// Check for query operations
 	if strings.Contains(intentLower, "status") || strings.Contains(intentLower, "check") ||
-	   strings.Contains(intentLower, "what") || strings.Contains(intentLower, "is") {
+		strings.Contains(intentLower, "what") || strings.Contains(intentLower, "is") {
 		return OperationQuery
 	}
 
 	// Check for critical operations
 	if strings.Contains(intentLower, "security") || strings.Contains(intentLower, "alarm") ||
-	   strings.Contains(intentLower, "lock") || strings.Contains(intentLower, "unlock") {
+		strings.Contains(intentLower, "lock") || strings.Contains(intentLower, "unlock") {
 		return OperationCritical
 	}
 
 	// Check for sequence operations (multiple actions)
 	if strings.Contains(intentLower, "and") || strings.Contains(intentLower, "then") ||
-	   strings.Contains(intentLower, "also") {
+		strings.Contains(intentLower, "also") {
 		return OperationSequence
 	}
 
 	// Check for maintenance operations
 	if strings.Contains(intentLower, "restart") || strings.Contains(intentLower, "reset") ||
-	   strings.Contains(intentLower, "update") || strings.Contains(intentLower, "configure") {
+		strings.Contains(intentLower, "update") || strings.Contains(intentLower, "configure") {
 		return OperationMaintenance
 	}
 
@@ -384,23 +384,23 @@ func initializeDeviceTimings() map[string]time.Duration {
 		string(CategoryEntertainment): 2 * time.Second,        // Media streaming control
 
 		// Medium response categories
-		string(CategoryProductivity):  3 * time.Second,  // Calendar/reminder operations
-		string(CategoryCommunication): 2 * time.Second,  // Send messages/calls
-		string(CategoryShopping):      4 * time.Second,  // Shopping API calls
-		string(CategoryHealth):        2 * time.Second,  // Health data retrieval
-		string(CategoryEducation):     3 * time.Second,  // Learning content access
+		string(CategoryProductivity):  3 * time.Second, // Calendar/reminder operations
+		string(CategoryCommunication): 2 * time.Second, // Send messages/calls
+		string(CategoryShopping):      4 * time.Second, // Shopping API calls
+		string(CategoryHealth):        2 * time.Second, // Health data retrieval
+		string(CategoryEducation):     3 * time.Second, // Learning content access
 
 		// Smart home (variable based on device)
-		string(CategorySmartHome):     3 * time.Second,  // Average smart device response
-		string(CategoryMultimedia):    2 * time.Second,  // Local media control
+		string(CategorySmartHome):  3 * time.Second, // Average smart device response
+		string(CategoryMultimedia): 2 * time.Second, // Local media control
 
 		// Slower categories
-		string(CategoryNavigation):    5 * time.Second,  // Route calculation
-		string(CategorySystem):        8 * time.Second,  // System operations
-		string(CategoryDeveloper):     10 * time.Second, // Development operations
+		string(CategoryNavigation): 5 * time.Second,  // Route calculation
+		string(CategorySystem):     8 * time.Second,  // System operations
+		string(CategoryDeveloper):  10 * time.Second, // Development operations
 
 		// Default
-		string(CategoryGeneral):       2 * time.Second,  // Conversational responses
+		string(CategoryGeneral): 2 * time.Second, // Conversational responses
 	}
 }
 

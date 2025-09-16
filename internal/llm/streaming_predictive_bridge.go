@@ -25,17 +25,16 @@ import (
 	"strings"
 	"sync"
 	"time"
-
 )
 
 // StreamingPredictiveBridge integrates streaming LLM with predictive response architecture
 type StreamingPredictiveBridge struct {
 	// Core components
-	streamingParser     *StreamingCommandParser
-	predictiveEngine    *PredictiveResponseEngine
-	statusManager       *StatusManager
-	commandClassifier   *CommandClassifier
-	executionPipeline   *AsyncExecutionPipeline
+	streamingParser   *StreamingCommandParser
+	predictiveEngine  *PredictiveResponseEngine
+	statusManager     *StatusManager
+	commandClassifier *CommandClassifier
+	executionPipeline *AsyncExecutionPipeline
 
 	// Configuration
 	enablePredictive    bool
@@ -44,48 +43,48 @@ type StreamingPredictiveBridge struct {
 	fallbackToStreaming bool
 
 	// State management
-	mu              sync.RWMutex
-	activeSessions  map[string]*BridgeSession
-	metrics         *BridgeMetrics
+	mu             sync.RWMutex
+	activeSessions map[string]*BridgeSession
+	metrics        *BridgeMetrics
 }
 
 // BridgeSession represents a unified streaming + predictive session
 type BridgeSession struct {
-	SessionID         string
-	UserTranscript    string
-	Classification    *CommandClassification
+	SessionID          string
+	UserTranscript     string
+	Classification     *CommandClassification
 	PredictiveResponse *PredictiveResponse
-	StreamingContext  string // Context ID for streaming parser
-	StatusUpdates     chan StatusUpdate
+	StreamingContext   string // Context ID for streaming parser
+	StatusUpdates      chan StatusUpdate
 
 	// Timing
-	StartTime         time.Time
-	FirstTokenTime    time.Time
-	PredictionTime    time.Time
+	StartTime          time.Time
+	FirstTokenTime     time.Time
+	PredictionTime     time.Time
 	ExecutionStartTime time.Time
 
 	// State
-	StreamingActive   bool
-	PredictionActive  bool
-	Completed         bool
+	StreamingActive  bool
+	PredictionActive bool
+	Completed        bool
 
 	// Cancellation
-	CancelFunc        context.CancelFunc
+	CancelFunc context.CancelFunc
 }
 
 // BridgeMetrics tracks performance of the integrated system
 type BridgeMetrics struct {
-	mu                      sync.RWMutex
-	TotalSessions           int64         `json:"total_sessions"`
-	StreamingOnlySessions   int64         `json:"streaming_only_sessions"`
-	PredictiveOnlySessions  int64         `json:"predictive_only_sessions"`
-	HybridSessions          int64         `json:"hybrid_sessions"`
-	AverageResponseTime     time.Duration `json:"average_response_time"`
-	AveragePredictionTime   time.Duration `json:"average_prediction_time"`
-	SuccessfulPredictions   int64         `json:"successful_predictions"`
-	FailedPredictions       int64         `json:"failed_predictions"`
-	FallbackToStreaming     int64         `json:"fallback_to_streaming"`
-	UserInterruptions       int64         `json:"user_interruptions"`
+	mu                     sync.RWMutex
+	TotalSessions          int64         `json:"total_sessions"`
+	StreamingOnlySessions  int64         `json:"streaming_only_sessions"`
+	PredictiveOnlySessions int64         `json:"predictive_only_sessions"`
+	HybridSessions         int64         `json:"hybrid_sessions"`
+	AverageResponseTime    time.Duration `json:"average_response_time"`
+	AveragePredictionTime  time.Duration `json:"average_prediction_time"`
+	SuccessfulPredictions  int64         `json:"successful_predictions"`
+	FailedPredictions      int64         `json:"failed_predictions"`
+	FallbackToStreaming    int64         `json:"fallback_to_streaming"`
+	UserInterruptions      int64         `json:"user_interruptions"`
 }
 
 // NewStreamingPredictiveBridge creates a new integrated bridge
@@ -97,11 +96,11 @@ func NewStreamingPredictiveBridge(
 	executionPipeline *AsyncExecutionPipeline,
 ) *StreamingPredictiveBridge {
 	return &StreamingPredictiveBridge{
-		streamingParser:     streamingParser,
-		predictiveEngine:    predictiveEngine,
-		statusManager:       statusManager,
-		commandClassifier:   commandClassifier,
-		executionPipeline:   executionPipeline,
+		streamingParser:   streamingParser,
+		predictiveEngine:  predictiveEngine,
+		statusManager:     statusManager,
+		commandClassifier: commandClassifier,
+		executionPipeline: executionPipeline,
 
 		enablePredictive:    true,
 		streamingEnabled:    true,
@@ -192,8 +191,8 @@ func (spb *StreamingPredictiveBridge) determineProcessingStrategy(classification
 
 	// Query or complex operations = streaming only
 	if strings.Contains(strings.ToLower(classification.Intent), "what") ||
-	   strings.Contains(strings.ToLower(classification.Intent), "how") ||
-	   strings.Contains(strings.ToLower(classification.Intent), "explain") {
+		strings.Contains(strings.ToLower(classification.Intent), "how") ||
+		strings.Contains(strings.ToLower(classification.Intent), "explain") {
 		return ProcessingStreamingOnly
 	}
 
@@ -517,16 +516,16 @@ func (spb *StreamingPredictiveBridge) GetMetrics() *BridgeMetrics {
 	defer spb.metrics.mu.RUnlock()
 
 	return &BridgeMetrics{
-		TotalSessions:           spb.metrics.TotalSessions,
-		StreamingOnlySessions:   spb.metrics.StreamingOnlySessions,
-		PredictiveOnlySessions:  spb.metrics.PredictiveOnlySessions,
-		HybridSessions:          spb.metrics.HybridSessions,
-		AverageResponseTime:     spb.metrics.AverageResponseTime,
-		AveragePredictionTime:   spb.metrics.AveragePredictionTime,
-		SuccessfulPredictions:   spb.metrics.SuccessfulPredictions,
-		FailedPredictions:       spb.metrics.FailedPredictions,
-		FallbackToStreaming:     spb.metrics.FallbackToStreaming,
-		UserInterruptions:       spb.metrics.UserInterruptions,
+		TotalSessions:          spb.metrics.TotalSessions,
+		StreamingOnlySessions:  spb.metrics.StreamingOnlySessions,
+		PredictiveOnlySessions: spb.metrics.PredictiveOnlySessions,
+		HybridSessions:         spb.metrics.HybridSessions,
+		AverageResponseTime:    spb.metrics.AverageResponseTime,
+		AveragePredictionTime:  spb.metrics.AveragePredictionTime,
+		SuccessfulPredictions:  spb.metrics.SuccessfulPredictions,
+		FailedPredictions:      spb.metrics.FailedPredictions,
+		FallbackToStreaming:    spb.metrics.FallbackToStreaming,
+		UserInterruptions:      spb.metrics.UserInterruptions,
 	}
 }
 
