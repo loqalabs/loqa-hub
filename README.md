@@ -22,7 +22,7 @@ Loqa Hub is the core service that handles:
 ## Features
 
 - 🎤 **Audio Processing**: Receives audio streams from relay devices via gRPC
-- 📝 **Speech Recognition**: Local speech-to-text using OpenAI-compatible STT service
+- 📝 **Speech Recognition**: Local speech-to-text using OpenAI-compatible STT service with confidence thresholds and wake word normalization
 - 🤖 **Intent Parsing**: Natural language understanding via Ollama LLM with multi-command support
 - 🔗 **Multi-Command Processing**: Parse and execute compound utterances like "turn on the lights and play music"
 - 📡 **Event Publishing**: Publishes parsed commands to NATS message bus
@@ -58,6 +58,15 @@ Loqa Hub is the core service that handles:
 - 🗣️ **Response Aggregation**: Intelligent combination of multiple command responses for natural TTS
 - ⚡ **Performance Optimized**: <200ms execution time per additional command
 - 📊 **Conjunction Detection**: Supports "and", "then", "after that", "next", "also" conjunctions
+
+### 🆕 Milestone 5a: STT Confidence & Wake Word Processing
+
+- 🗣️ **Wake Word Normalization**: Automatically strips wake words ("Hey Loqa", "Hey Luca", etc.) before intent parsing
+- 🎯 **Confidence Thresholds**: Estimates transcription confidence and handles low-quality audio gracefully
+- 🔄 **Fallback Confirmation**: Prompts users to repeat unclear commands instead of failing silently
+- 📊 **Pattern Recognition**: Detects nonsensical patterns, repetition, and other quality indicators
+- 🎛️ **Configurable Thresholds**: 60% default confidence threshold with room for user customization
+- 🔍 **Enhanced Logging**: Detailed confidence and wake word detection information in voice events
 - 🔄 **Backward Compatible**: Seamless fallback to single-command parsing when needed
 
 ## Architecture
