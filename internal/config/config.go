@@ -27,12 +27,13 @@ import (
 
 // Config holds all configuration for the Loqa hub
 type Config struct {
-	Server  ServerConfig
-	STT     STTConfig
-	TTS     TTSConfig
-	Logging LoggingConfig
-	NATS    NATSConfig
-	Privacy PrivacyConfig
+	Server    ServerConfig
+	STT       STTConfig
+	TTS       TTSConfig
+	Streaming StreamingConfig
+	Logging   LoggingConfig
+	NATS      NATSConfig
+	Privacy   PrivacyConfig
 }
 
 // ServerConfig holds server-related configuration
@@ -62,6 +63,20 @@ type TTSConfig struct {
 	MaxConcurrent   int           // Maximum concurrent TTS requests
 	Timeout         time.Duration // Request timeout
 	FallbackEnabled bool          // Enable fallback to legacy TTS if available
+}
+
+// StreamingConfig holds real-time streaming configuration
+type StreamingConfig struct {
+	Enabled             bool          // Enable streaming LLM responses
+	OllamaURL           string        // Ollama API URL for streaming
+	Model               string        // LLM model to use for streaming
+	MaxBufferTime       time.Duration // Maximum time to buffer tokens before synthesis
+	MaxTokensPerPhrase  int           // Maximum tokens to buffer per phrase
+	AudioConcurrency    int           // Number of parallel TTS synthesis workers
+	VisualFeedbackDelay time.Duration // Delay before showing visual tokens (for smoothness)
+	InterruptTimeout    time.Duration // Timeout for graceful stream interruption
+	FallbackEnabled     bool          // Enable fallback to non-streaming mode on errors
+	MetricsEnabled      bool          // Enable streaming performance metrics
 }
 
 // LoggingConfig holds logging configuration
@@ -118,6 +133,18 @@ func Load() (*Config, error) {
 			MaxConcurrent:   getEnvInt("TTS_MAX_CONCURRENT", 10),
 			Timeout:         getEnvDuration("TTS_TIMEOUT", 10*time.Second),
 			FallbackEnabled: getEnvBool("TTS_FALLBACK_ENABLED", true),
+		},
+		Streaming: StreamingConfig{
+			Enabled:             getEnvBool("STREAMING_ENABLED", false), // Default disabled for gradual rollout
+			OllamaURL:           getEnvString("OLLAMA_URL", "http://ollama:11434"),
+			Model:               getEnvString("STREAMING_MODEL", "llama3.2:3b"),
+			MaxBufferTime:       getEnvDuration("STREAMING_MAX_BUFFER_TIME", 2*time.Second),
+			MaxTokensPerPhrase:  getEnvInt("STREAMING_MAX_TOKENS_PER_PHRASE", 50),
+			AudioConcurrency:    getEnvInt("STREAMING_AUDIO_CONCURRENCY", 3),
+			VisualFeedbackDelay: getEnvDuration("STREAMING_VISUAL_DELAY", 50*time.Millisecond),
+			InterruptTimeout:    getEnvDuration("STREAMING_INTERRUPT_TIMEOUT", 500*time.Millisecond),
+			FallbackEnabled:     getEnvBool("STREAMING_FALLBACK_ENABLED", true),
+			MetricsEnabled:      getEnvBool("STREAMING_METRICS_ENABLED", true),
 		},
 		Logging: LoggingConfig{
 			Level:  getEnvString("LOG_LEVEL", "info"),

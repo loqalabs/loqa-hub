@@ -8,91 +8,91 @@ func TestPostProcessTranscription(t *testing.T) {
 	client := &STTClient{}
 
 	tests := []struct {
-		name                   string
-		input                  string
-		expectedCleanedText    string
-		expectedWakeWord       bool
-		expectedWakeWordVariant string
+		name                      string
+		input                     string
+		expectedCleanedText       string
+		expectedWakeWord          bool
+		expectedWakeWordVariant   string
 		expectedNeedsConfirmation bool
 	}{
 		{
-			name:                   "Standard wake word with command",
-			input:                  "Hey Loqa turn on the lights",
-			expectedCleanedText:    "turn on the lights",
-			expectedWakeWord:       true,
-			expectedWakeWordVariant: "hey loqa",
+			name:                      "Standard wake word with command",
+			input:                     "Hey Loqa turn on the lights",
+			expectedCleanedText:       "turn on the lights",
+			expectedWakeWord:          true,
+			expectedWakeWordVariant:   "hey loqa",
 			expectedNeedsConfirmation: false,
 		},
 		{
-			name:                   "Wake word variant - Hey Luca",
-			input:                  "Hey Luca turn off the music",
-			expectedCleanedText:    "turn off the music",
-			expectedWakeWord:       true,
-			expectedWakeWordVariant: "hey luca",
+			name:                      "Wake word variant - Hey Luca",
+			input:                     "Hey Luca turn off the music",
+			expectedCleanedText:       "turn off the music",
+			expectedWakeWord:          true,
+			expectedWakeWordVariant:   "hey luca",
 			expectedNeedsConfirmation: false,
 		},
 		{
-			name:                   "Wake word variant - Hey Luka",
-			input:                  "Hey Luka what time is it",
-			expectedCleanedText:    "what time is it",
-			expectedWakeWord:       true,
-			expectedWakeWordVariant: "hey luka",
+			name:                      "Wake word variant - Hey Luka",
+			input:                     "Hey Luka what time is it",
+			expectedCleanedText:       "what time is it",
+			expectedWakeWord:          true,
+			expectedWakeWordVariant:   "hey luka",
 			expectedNeedsConfirmation: false,
 		},
 		{
-			name:                   "Just wake word, no command",
-			input:                  "Hey Loqa",
-			expectedCleanedText:    "",
-			expectedWakeWord:       true,
-			expectedWakeWordVariant: "hey loqa",
+			name:                      "Just wake word, no command",
+			input:                     "Hey Loqa",
+			expectedCleanedText:       "",
+			expectedWakeWord:          true,
+			expectedWakeWordVariant:   "hey loqa",
 			expectedNeedsConfirmation: true,
 		},
 		{
-			name:                   "No wake word",
-			input:                  "turn on the lights",
-			expectedCleanedText:    "turn on the lights",
-			expectedWakeWord:       false,
-			expectedWakeWordVariant: "",
+			name:                      "No wake word",
+			input:                     "turn on the lights",
+			expectedCleanedText:       "turn on the lights",
+			expectedWakeWord:          false,
+			expectedWakeWordVariant:   "",
 			expectedNeedsConfirmation: false,
 		},
 		{
-			name:                   "Very short command (low confidence)",
-			input:                  "on",
-			expectedCleanedText:    "on",
-			expectedWakeWord:       false,
-			expectedWakeWordVariant: "",
+			name:                      "Very short command (low confidence)",
+			input:                     "on",
+			expectedCleanedText:       "on",
+			expectedWakeWord:          false,
+			expectedWakeWordVariant:   "",
 			expectedNeedsConfirmation: true,
 		},
 		{
-			name:                   "Nonsensical patterns",
-			input:                  "???",
-			expectedCleanedText:    "???",
-			expectedWakeWord:       false,
-			expectedWakeWordVariant: "",
+			name:                      "Nonsensical patterns",
+			input:                     "???",
+			expectedCleanedText:       "???",
+			expectedWakeWord:          false,
+			expectedWakeWordVariant:   "",
 			expectedNeedsConfirmation: true,
 		},
 		{
-			name:                   "Repeated characters (stammering)",
-			input:                  "Hey Loqa aaaaaah",
-			expectedCleanedText:    "aaaaaah",
-			expectedWakeWord:       true,
-			expectedWakeWordVariant: "hey loqa",
+			name:                      "Repeated characters (stammering)",
+			input:                     "Hey Loqa aaaaaah",
+			expectedCleanedText:       "aaaaaah",
+			expectedWakeWord:          true,
+			expectedWakeWordVariant:   "hey loqa",
 			expectedNeedsConfirmation: false, // Still above confidence threshold due to wake word boost
 		},
 		{
-			name:                   "Case insensitive wake word",
-			input:                  "HEY LOQA TURN ON LIGHTS",
-			expectedCleanedText:    "TURN ON LIGHTS",
-			expectedWakeWord:       true,
-			expectedWakeWordVariant: "hey loqa",
+			name:                      "Case insensitive wake word",
+			input:                     "HEY LOQA TURN ON LIGHTS",
+			expectedCleanedText:       "TURN ON LIGHTS",
+			expectedWakeWord:          true,
+			expectedWakeWordVariant:   "hey loqa",
 			expectedNeedsConfirmation: false,
 		},
 		{
-			name:                   "Wake word with punctuation",
-			input:                  "Hey Loqa, turn on the lights",
-			expectedCleanedText:    "turn on the lights",
-			expectedWakeWord:       true,
-			expectedWakeWordVariant: "hey loqa",
+			name:                      "Wake word with punctuation",
+			input:                     "Hey Loqa, turn on the lights",
+			expectedCleanedText:       "turn on the lights",
+			expectedWakeWord:          true,
+			expectedWakeWordVariant:   "hey loqa",
 			expectedNeedsConfirmation: false,
 		},
 	}
@@ -134,10 +134,10 @@ func TestEstimateConfidence(t *testing.T) {
 	client := &STTClient{}
 
 	tests := []struct {
-		name     string
-		input    string
-		minConf  float64
-		maxConf  float64
+		name    string
+		input   string
+		minConf float64
+		maxConf float64
 	}{
 		{
 			name:    "Empty string",

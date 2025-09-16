@@ -32,9 +32,9 @@ func (m *MockStream) Recv() (*pb.AudioChunk, error) {
 func (m *MockStream) SetHeader(md metadata.MD) error  { return nil }
 func (m *MockStream) SendHeader(md metadata.MD) error { return nil }
 func (m *MockStream) SetTrailer(md metadata.MD)       {}
-func (m *MockStream) Context() context.Context              { return context.Background() }
-func (m *MockStream) SendMsg(m2 interface{}) error          { return nil }
-func (m *MockStream) RecvMsg(m2 interface{}) error          { return nil }
+func (m *MockStream) Context() context.Context        { return context.Background() }
+func (m *MockStream) SendMsg(m2 interface{}) error    { return nil }
+func (m *MockStream) RecvMsg(m2 interface{}) error    { return nil }
 
 func (m *MockStream) GetResponses() []*pb.AudioResponse {
 	m.mutex.Lock()

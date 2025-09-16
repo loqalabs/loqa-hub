@@ -83,7 +83,7 @@ func (l *DefaultSkillLoader) LoadSkill(ctx context.Context, skillPath string) (S
 	}
 
 	// Load manifest
-	manifestPath := filepath.Join(skillPath, "skill.json")
+	manifestPath := filepath.Clean(filepath.Join(skillPath, "skill.json"))
 	manifestData, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read manifest: %w", err)

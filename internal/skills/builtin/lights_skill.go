@@ -173,17 +173,22 @@ func (s *LightsSkill) performLightingAction(action, location string) (bool, stri
 	// In a real implementation, this would interface with actual smart home systems
 	// For now, we'll simulate the action
 
+	var locationText string
+	if location != "" {
+		locationText = " in the " + location
+	}
+
 	switch action {
 	case "on":
-		return true, "Turned on the lights"
+		return true, "Turned on the lights" + locationText
 	case "off":
-		return true, "Turned off the lights"
+		return true, "Turned off the lights" + locationText
 	case "dim":
-		return true, "Dimmed the lights"
+		return true, "Dimmed the lights" + locationText
 	case "brighten":
-		return true, "Brightened the lights"
+		return true, "Brightened the lights" + locationText
 	case "toggle":
-		return true, "Toggled the lights"
+		return true, "Toggled the lights" + locationText
 	default:
 		return false, fmt.Sprintf("don't understand the action: %s", action)
 	}
