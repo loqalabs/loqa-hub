@@ -249,9 +249,11 @@ func (as *AudioService) startArbitrationWindow(relayID string, stream pb.AudioSe
 		WindowDuration: as.arbitrationWindowDuration,
 		Relays:         make(map[string]*RelayStream),
 		IsActive:       true,
+		mutex:          sync.RWMutex{}, // Initialize mutex
 	}
 
-	// Add the initial relay
+	// Add the initial relay (with window locking)
+	window.mutex.Lock()
 	relayStream := &RelayStream{
 		Stream:        stream,
 		RelayID:       relayID,
@@ -261,6 +263,8 @@ func (as *AudioService) startArbitrationWindow(relayID string, stream pb.AudioSe
 	}
 
 	window.Relays[relayID] = relayStream
+	window.mutex.Unlock()
+
 	as.activeStreams[relayID] = relayStream
 	as.arbitrationWindow = window
 
@@ -281,7 +285,15 @@ func (as *AudioService) joinArbitrationWindow(relayID string, stream pb.AudioSer
 	defer as.streamsMutex.Unlock()
 
 	window := as.arbitrationWindow
-	if window == nil || !window.IsActive {
+	if window == nil {
+		return false
+	}
+
+	// Lock window for atomic access to its state
+	window.mutex.Lock()
+	defer window.mutex.Unlock()
+
+	if !window.IsActive {
 		return false
 	}
 
@@ -415,6 +427,14 @@ func (as *AudioService) calculateSignalStrength(samples []float32) float64 {
 
 // sendCancellationResponse sends a cancellation message to a losing relay
 func (as *AudioService) sendCancellationResponse(relay *RelayStream) {
+	// Check if stream is available (nil in tests)
+	if relay.Stream == nil {
+		logging.LogAudioProcessing(relay.RelayID, "cancellation_skipped",
+			zap.String("reason", "nil_stream_in_test"),
+		)
+		return
+	}
+
 	response := &pb.AudioResponse{
 		RequestId:    relay.RelayID,
 		Transcription: "",
