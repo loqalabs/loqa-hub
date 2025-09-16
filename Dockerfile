@@ -1,9 +1,11 @@
-# Go builder stage  
-FROM golang:1.25.1-alpine AS go-builder
+# Go builder stage
+FROM --platform=$BUILDPLATFORM golang:1.25.1-alpine AS go-builder
 
-# Accept build arguments for platform information
+# Accept build arguments for cross-compilation
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
 
 # Install basic dependencies for Go module download
 RUN apk add --no-cache git ca-certificates
@@ -11,19 +13,26 @@ RUN apk add --no-cache git ca-certificates
 # Set working directory
 WORKDIR /app
 
-# Copy loqa-hub 
-COPY loqa-hub ./loqa-hub
+# Copy go mod files first for better layer caching
+COPY loqa-hub/go.mod loqa-hub/go.sum ./loqa-hub/
 WORKDIR /app/loqa-hub
 
-# Download go modules
+# Download go modules (cached independently of source changes)
 RUN go mod download
 
-# Build the hub service as static binary
-ENV CGO_ENABLED=0
-RUN go build -v -ldflags="-w -s" -o loqa-hub ./cmd
+# Copy source code
+COPY loqa-hub/ ./
 
-# Runtime stage
-FROM alpine:latest
+# Build the hub service as static binary with proper cross-compilation
+ENV CGO_ENABLED=0
+ENV GOOS=${TARGETOS:-linux}
+ENV GOARCH=${TARGETARCH:-amd64}
+
+RUN echo "Building for GOOS=${GOOS} GOARCH=${GOARCH}" && \
+    go build -v -ldflags="-w -s" -o loqa-hub ./cmd
+
+# Runtime stage - use platform-specific base image
+FROM --platform=$TARGETPLATFORM alpine:latest
 
 # Install runtime dependencies
 RUN apk add --no-cache ca-certificates
@@ -31,7 +40,7 @@ RUN apk add --no-cache ca-certificates
 # Create app directory
 WORKDIR /app
 
-# Copy binary
+# Copy binary from builder stage
 COPY --from=go-builder /app/loqa-hub/loqa-hub .
 
 # Set default environment variables
