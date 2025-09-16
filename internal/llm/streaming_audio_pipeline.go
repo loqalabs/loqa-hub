@@ -198,7 +198,10 @@ func (sap *StreamingAudioPipeline) phraseProcessor(ctx context.Context, pipeline
 				continue
 			}
 
+			// Thread-safe metrics update
+			pipelineCtx.mu.Lock()
 			pipelineCtx.Metrics.TotalPhrases++
+			pipelineCtx.mu.Unlock()
 
 			// Create synthesis job
 			job := &SynthesisJob{
@@ -208,11 +211,13 @@ func (sap *StreamingAudioPipeline) phraseProcessor(ctx context.Context, pipeline
 				StartTime: time.Now(),
 			}
 
-			// Update queue high water mark
+			// Update queue high water mark (thread-safe)
 			queueLen := len(pipelineCtx.synthesisQueue)
+			pipelineCtx.mu.Lock()
 			if queueLen > pipelineCtx.Metrics.QueueHighWaterMark {
 				pipelineCtx.Metrics.QueueHighWaterMark = queueLen
 			}
+			pipelineCtx.mu.Unlock()
 
 			select {
 			case pipelineCtx.synthesisQueue <- job:
@@ -271,7 +276,11 @@ func (sap *StreamingAudioPipeline) synthesisWorker(ctx context.Context, pipeline
 
 			if err != nil {
 				job.Error = err
+
+				// Thread-safe metrics update
+				pipelineCtx.mu.Lock()
 				pipelineCtx.Metrics.FailedSynthesis++
+				pipelineCtx.mu.Unlock()
 
 				select {
 				case pipelineCtx.ErrorChan <- fmt.Errorf("TTS synthesis failed for job %d: %w", job.ID, err):
@@ -280,6 +289,9 @@ func (sap *StreamingAudioPipeline) synthesisWorker(ctx context.Context, pipeline
 				}
 			} else {
 				job.Result = result
+
+				// Thread-safe metrics update
+				pipelineCtx.mu.Lock()
 				pipelineCtx.Metrics.SynthesizedPhrases++
 
 				// Update synthesis time metrics
@@ -291,6 +303,7 @@ func (sap *StreamingAudioPipeline) synthesisWorker(ctx context.Context, pipeline
 					pipelineCtx.Metrics.AverageSynthesisTime =
 						(pipelineCtx.Metrics.AverageSynthesisTime + synthesisTime) / 2
 				}
+				pipelineCtx.mu.Unlock()
 			}
 
 			// Send completed job to sequencer
@@ -360,10 +373,12 @@ func (sap *StreamingAudioPipeline) audioSequencer(ctx context.Context, pipelineC
 						Timestamp:   time.Now(),
 					}
 
-					// Record first audio timing
+					// Record first audio timing (thread-safe)
+					pipelineCtx.mu.Lock()
 					if pipelineCtx.Metrics.FirstAudioTime.IsZero() {
 						pipelineCtx.Metrics.FirstAudioTime = time.Now()
 					}
+					pipelineCtx.mu.Unlock()
 
 					// Send audio chunk
 					select {
