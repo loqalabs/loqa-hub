@@ -36,7 +36,7 @@ import (
 type StreamingCommandParser struct {
 	ollamaURL      string
 	model          string
-	client         *http.Client
+	client         HTTPClient
 	enabled        bool
 	fallbackParser *CommandParser
 }
@@ -89,6 +89,20 @@ func NewStreamingCommandParser(ollamaURL, model string, enabled bool) *Streaming
 		ollamaURL:      ollamaURL,
 		model:          model,
 		client:         &http.Client{Timeout: 30 * time.Second},
+		enabled:        enabled,
+		fallbackParser: fallbackParser,
+	}
+}
+
+// NewStreamingCommandParserWithClient creates a new streaming command parser with a custom HTTP client (for testing)
+func NewStreamingCommandParserWithClient(ollamaURL, model string, enabled bool, client HTTPClient) *StreamingCommandParser {
+	// Create fallback parser with same client
+	fallbackParser := NewCommandParserWithClient(ollamaURL, model, client)
+
+	return &StreamingCommandParser{
+		ollamaURL:      ollamaURL,
+		model:          model,
+		client:         client,
 		enabled:        enabled,
 		fallbackParser: fallbackParser,
 	}

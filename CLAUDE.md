@@ -63,4 +63,68 @@ type StreamingConfig struct {
 }
 ```
 
+## 🚀 Predictive Response Architecture Development
+
+### Key Components
+
+- **PredictiveResponseEngine** (`internal/llm/predictive_response.go`)
+  - Instant acknowledgments decoupled from execution
+  - Asynchronous skill execution with worker pools
+  - Device reliability tracking for prediction accuracy
+  - Smart status update strategies (Silent/ErrorOnly/Verbose/Progress)
+
+- **CommandClassifier** (`internal/llm/command_classifier.go`)
+  - Dynamic intent classification beyond static categories (15+ intent types)
+  - Confidence scoring and device reliability integration
+  - Optimistic vs cautious response pattern selection
+
+- **AsyncExecutionPipeline** (`internal/llm/async_execution.go`)
+  - Background skill execution with retry logic
+  - Worker pool management for concurrent operations
+  - Performance metrics and error handling
+
+- **StatusManager** (`internal/llm/status_manager.go`)
+  - Intelligent status update routing based on operation type
+  - Error pattern detection and automated recovery
+  - TTS integration for audio feedback
+
+- **StreamingPredictiveBridge** (`internal/llm/streaming_predictive_bridge.go`)
+  - Integration between streaming LLM and predictive response
+  - Session management and hybrid response strategies
+  - Graceful fallback between streaming and predictive modes
+
+### Development Guidelines
+
+- **Instant Feedback**: Always provide immediate acknowledgment (<200ms perceived)
+- **Async Execution**: Never block user interaction waiting for device responses
+- **Smart Updates**: Use appropriate update strategy based on operation type and device reliability
+- **Error Recovery**: Implement graceful corrections when predictions fail
+- **Confidence-Based**: Adapt response patterns based on command/device confidence
+
+### Response Type Patterns
+
+```go
+type PredictiveType string
+const (
+    PredictiveOptimistic PredictiveType = "optimistic" // High confidence + reliable device
+    PredictiveCautious   PredictiveType = "cautious"   // Uncertain command or device
+    PredictiveConfirm    PredictiveType = "confirm"    // Critical operations requiring confirmation
+    PredictiveProgress   PredictiveType = "progress"   // Slow operations needing status updates
+)
+```
+
+### Configuration
+
+Predictive response behavior is controlled via `config.PredictiveConfig`:
+
+```go
+type PredictiveConfig struct {
+    Enabled              bool          // Feature flag
+    ConfidenceThreshold  float64       // Minimum confidence for optimistic responses
+    ExecutionTimeout     time.Duration // Max time for async execution
+    StatusUpdateStrategy UpdateStrategy // Default update strategy
+    DeviceReliabilityMin float64       // Minimum device reliability for optimistic responses
+}
+```
+
 All workflow rules and development guidance are provided automatically by the MCP server based on repository detection.

@@ -25,7 +25,7 @@ test-coverage: ## Run tests with coverage
 	$(GOCMD) tool cover -html=coverage.out
 
 # Linting and formatting
-lint: ## Run golangci-lint
+lint: ## Run golangci-lint (includes staticcheck, errcheck, govet, etc.)
 	golangci-lint run --config .golangci.yml
 
 lint-fix: ## Run golangci-lint with auto-fix

@@ -29,22 +29,22 @@ import (
 	"github.com/loqalabs/loqa-hub/internal/config"
 )
 
-// MockTTSClient implements TextToSpeech interface for testing
-type MockTTSClient struct {
+// MockStreamingTTSClient implements TextToSpeech interface for testing
+type MockStreamingTTSClient struct {
 	synthesizeDelay time.Duration
 	voices          []string
 	shouldFail      bool
 }
 
-func NewMockTTSClient() *MockTTSClient {
-	return &MockTTSClient{
+func NewMockStreamingTTSClient() *MockStreamingTTSClient {
+	return &MockStreamingTTSClient{
 		synthesizeDelay: 100 * time.Millisecond,
 		voices:          []string{"test_voice", "af_bella"},
 		shouldFail:      false,
 	}
 }
 
-func (m *MockTTSClient) Synthesize(text string, options *TTSOptions) (*TTSResult, error) {
+func (m *MockStreamingTTSClient) Synthesize(text string, options *TTSOptions) (*TTSResult, error) {
 	if m.shouldFail {
 		return nil, io.ErrUnexpectedEOF
 	}
@@ -62,11 +62,11 @@ func (m *MockTTSClient) Synthesize(text string, options *TTSOptions) (*TTSResult
 	}, nil
 }
 
-func (m *MockTTSClient) GetAvailableVoices() ([]string, error) {
+func (m *MockStreamingTTSClient) GetAvailableVoices() ([]string, error) {
 	return m.voices, nil
 }
 
-func (m *MockTTSClient) Close() error {
+func (m *MockStreamingTTSClient) Close() error {
 	return nil
 }
 
@@ -121,7 +121,9 @@ func TestPhraseBuffer(t *testing.T) {
 
 // Test StreamingCommandParser basic functionality
 func TestStreamingCommandParser_FallbackMode(t *testing.T) {
-	parser := NewStreamingCommandParser("http://localhost:11434", "test-model", false)
+	// Use mock client to avoid external calls
+	mockClient := CreateMockHTTPClient()
+	parser := NewStreamingCommandParserWithClient("http://localhost:11434", "test-model", false, mockClient)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -147,7 +149,7 @@ func TestStreamingCommandParser_FallbackMode(t *testing.T) {
 
 // Test StreamingAudioPipeline
 func TestStreamingAudioPipeline(t *testing.T) {
-	mockTTS := NewMockTTSClient()
+	mockTTS := NewMockStreamingTTSClient()
 	options := &TTSOptions{
 		Voice:          "test_voice",
 		Speed:          1.0,
@@ -321,10 +323,13 @@ func TestStreamingComponents(t *testing.T) {
 	}
 
 	// Create mock TTS client
-	mockTTS := NewMockTTSClient()
+	mockTTS := NewMockStreamingTTSClient()
 
-	// Initialize streaming components
-	components, err := NewStreamingComponents(cfg, mockTTS)
+	// Create mock HTTP client
+	mockHTTPClient := CreateMockHTTPClient()
+
+	// Initialize streaming components with mock client
+	components, err := NewStreamingComponentsWithMockClient(cfg, mockTTS, mockHTTPClient)
 	if err != nil {
 		// Expected to fail without real Ollama connection
 		t.Logf("Expected failure connecting to test Ollama: %v", err)
@@ -358,7 +363,7 @@ func BenchmarkPhraseBuffer(b *testing.B) {
 
 // Test error handling in audio pipeline
 func TestStreamingAudioPipeline_ErrorHandling(t *testing.T) {
-	mockTTS := NewMockTTSClient()
+	mockTTS := NewMockStreamingTTSClient()
 	mockTTS.shouldFail = true // Force TTS failures
 
 	pipeline := NewStreamingAudioPipeline(mockTTS, nil)
@@ -387,7 +392,7 @@ func TestStreamingAudioPipeline_ErrorHandling(t *testing.T) {
 
 // Test concurrent pipeline sessions
 func TestStreamingAudioPipeline_Concurrent(t *testing.T) {
-	mockTTS := NewMockTTSClient()
+	mockTTS := NewMockStreamingTTSClient()
 	pipeline := NewStreamingAudioPipeline(mockTTS, nil)
 
 	// Start multiple concurrent sessions

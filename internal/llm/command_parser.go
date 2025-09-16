@@ -38,7 +38,7 @@ const (
 type CommandParser struct {
 	ollamaURL string
 	model     string
-	client    *http.Client
+	client    HTTPClient
 }
 
 // Command represents a parsed voice command
@@ -88,6 +88,15 @@ func NewCommandParser(ollamaURL, model string) *CommandParser {
 		ollamaURL: ollamaURL,
 		model:     model,
 		client:    &http.Client{},
+	}
+}
+
+// NewCommandParserWithClient creates a new command parser with a custom HTTP client (for testing)
+func NewCommandParserWithClient(ollamaURL, model string, client HTTPClient) *CommandParser {
+	return &CommandParser{
+		ollamaURL: ollamaURL,
+		model:     model,
+		client:    client,
 	}
 }
 
@@ -223,7 +232,13 @@ func (cp *CommandParser) queryOllama(prompt string) (string, error) {
 		return "", fmt.Errorf("error marshaling request: %w", err)
 	}
 
-	resp, err := cp.client.Post(cp.ollamaURL+"/api/generate", "application/json", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", cp.ollamaURL+"/api/generate", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("error creating request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := cp.client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("error making request to Ollama: %w", err)
 	}
@@ -503,7 +518,12 @@ func (cp *CommandParser) createCombinedCommand(multiCmd *MultiCommand) *Command 
 // TestConnection tests if Ollama is accessible and the model is available
 func (cp *CommandParser) TestConnection() error {
 	// Test basic connection
-	resp, err := cp.client.Get(cp.ollamaURL + "/api/tags")
+	req, err := http.NewRequest("GET", cp.ollamaURL+"/api/tags", nil)
+	if err != nil {
+		return fmt.Errorf("error creating request: %w", err)
+	}
+
+	resp, err := cp.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("cannot connect to Ollama at %s: %w", cp.ollamaURL, err)
 	}
