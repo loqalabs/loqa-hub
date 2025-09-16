@@ -401,10 +401,7 @@ func (sm *StatusManager) enhanceUpdateMessage(statusCtx *StatusContext, update *
 		}
 	}
 
-	// Add confidence information for predictions
-	if update.Type == StatusSuccess && statusCtx.Priority == PriorityLow {
-		update.Message = fmt.Sprintf("%s", update.Message) // Keep success messages clean
-	}
+	// Success messages are kept clean (no additional formatting needed for low priority)
 }
 
 // sendUpdate delivers the status update through appropriate channels
