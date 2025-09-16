@@ -241,3 +241,70 @@ Currently no authentication is required. In production environments, consider im
 ## CORS
 
 CORS headers are not currently set. For web-based frontends, consider adding appropriate CORS configuration.
+
+## STT Confidence & Wake Word Processing
+
+The Loqa hub includes advanced speech-to-text processing with confidence thresholds and wake word normalization.
+
+### Wake Word Detection
+
+The system automatically detects and strips wake words from transcriptions before intent parsing:
+
+#### Supported Wake Word Patterns
+- `"Hey Loqa"` (primary)
+- `"Hey Luca"`, `"Hey Luka"`, `"Hey Loca"` (common STT misrecognitions)
+- `"Hey Logic"`, `"Hey Local"` (other variants)
+- `"Loqa"`, `"Luca"`, `"Luka"` (standalone variants)
+
+#### Processing Behavior
+- **Case insensitive**: `"HEY LOQA"` is handled the same as `"hey loqa"`
+- **Punctuation tolerant**: `"Hey Loqa, turn on lights"` → `"turn on lights"`
+- **Preserves original**: Original transcription is logged for debugging
+
+### Confidence Thresholds
+
+The system estimates transcription confidence and handles low-confidence cases gracefully:
+
+#### Confidence Estimation Factors
+- **Text length**: Very short utterances (< 3 chars) reduce confidence
+- **Pattern recognition**: Nonsensical patterns (`"???"`, `"..."`) reduce confidence
+- **Repetition detection**: Stammering patterns (`"aaaaaah"`) reduce confidence
+- **Wake word boost**: Presence of wake words increases confidence
+
+#### Confidence Handling
+- **High confidence (≥60%)**: Process normally
+- **Low confidence (<60%)**: Send confirmation prompt
+- **Empty after wake word stripping**: Always request confirmation
+
+#### Example Confidence Responses
+```json
+{
+  "transcription": "turn lights",
+  "confidence": 0.45,
+  "response_text": "I'm not sure I heard you correctly. Did you say 'turn lights'? Please repeat if that's not right.",
+  "command": "confirmation_needed"
+}
+```
+
+### Enhanced Logging
+
+Voice events now include detailed STT processing information:
+
+```json
+{
+  "uuid": "123e4567-e89b-12d3-a456-426614174000",
+  "transcription": "turn on the lights",
+  "confidence": 0.85,
+  "wake_word_detected": true,
+  "wake_word_variant": "hey loqa",
+  "original_transcription": "Hey Loqa turn on the lights",
+  "needs_confirmation": false
+}
+```
+
+### Integration Notes
+
+- **Backward compatible**: Existing `Transcribe()` method still works
+- **Enhanced method**: New `TranscribeWithConfidence()` provides detailed results
+- **Graceful fallback**: Low confidence gracefully handled without errors
+- **User experience**: Confirmation prompts improve interaction reliability
