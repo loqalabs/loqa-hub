@@ -23,6 +23,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/loqalabs/loqa-hub/internal/api"
@@ -33,19 +34,8 @@ import (
 	"google.golang.org/grpc"
 )
 
-type Config struct {
-	Port      string
-	GRPCPort  string
-	STTURL    string // REST API URL for OpenAI-compatible STT service
-	ASRURL    string
-	IntentURL string
-	TTSURL    string
-	TTSConfig config.TTSConfig
-	DBPath    string
-}
-
 type Server struct {
-	cfg          Config
+	cfg          *config.Config
 	mux          *http.ServeMux
 	grpcServer   *grpc.Server
 	audioService *grpcservice.AudioService
@@ -54,12 +44,16 @@ type Server struct {
 	apiHandler   *api.VoiceEventsHandler
 }
 
-func New(cfg Config) *Server {
+func New(cfg *config.Config) *Server {
+	return NewWithOptions(cfg, true)
+}
+
+func NewWithOptions(cfg *config.Config, enableHealthChecks bool) *Server {
 	mux := http.NewServeMux()
 
 	// Initialize database
 	dbConfig := storage.DatabaseConfig{
-		Path: cfg.DBPath,
+		Path: cfg.Server.DBPath,
 	}
 	database, err := storage.NewDatabase(dbConfig)
 	if err != nil {
@@ -77,9 +71,9 @@ func New(cfg Config) *Server {
 
 	var audioService *grpcservice.AudioService
 
-	log.Printf("🎙️  Using STT service at: %s", cfg.STTURL)
-	log.Printf("🔊 Using TTS service at: %s", cfg.TTSConfig.URL)
-	audioService, err = grpcservice.NewAudioServiceWithTTS(cfg.STTURL, cfg.TTSConfig, eventsStore)
+	log.Printf("🎙️  Using STT service at: %s", cfg.STT.URL)
+	log.Printf("🔊 Using TTS service at: %s", cfg.TTS.URL)
+	audioService, err = grpcservice.NewAudioServiceWithTTSAndOptions(cfg.STT.URL, cfg.STT.Language, cfg.TTS, eventsStore, enableHealthChecks)
 
 	if err != nil {
 		log.Fatalf("Failed to create audio service: %v", err)
@@ -104,10 +98,7 @@ func New(cfg Config) *Server {
 func (s *Server) Start() error {
 	// Start gRPC server in a goroutine
 	go func() {
-		grpcPort := s.cfg.GRPCPort
-		if grpcPort == "" {
-			grpcPort = "50051"
-		}
+		grpcPort := strconv.Itoa(s.cfg.Server.GRPCPort)
 
 		lis, err := net.Listen("tcp", ":"+grpcPort)
 		if err != nil {
@@ -121,9 +112,10 @@ func (s *Server) Start() error {
 	}()
 
 	// Start HTTP server with security timeouts
-	log.Printf("🌐 HTTP server listening on :%s", s.cfg.Port)
+	httpPort := strconv.Itoa(s.cfg.Server.Port)
+	log.Printf("🌐 HTTP server listening on :%s", httpPort)
 	server := &http.Server{
-		Addr:         ":" + s.cfg.Port,
+		Addr:         ":" + httpPort,
 		Handler:      s.mux,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
