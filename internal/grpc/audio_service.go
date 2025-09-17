@@ -219,11 +219,32 @@ func createAudioService(transcriber llm.Transcriber, ttsClient llm.TextToSpeech,
 		}
 	}()
 
-	// Test connection to Ollama (non-blocking)
+	// Test connection to Ollama with automatic retry (non-blocking)
 	go func() {
-		if err := commandParser.TestConnection(); err != nil {
-			log.Printf("⚠️  Warning: Cannot connect to Ollama: %v", err)
-			log.Println("🔄 Command parsing will use fallback logic")
+		maxRetries := 10
+		retryDelay := 15 * time.Second
+
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			if err := commandParser.TestConnection(); err != nil {
+				if attempt == 1 {
+					log.Printf("⚠️  Warning: Cannot connect to Ollama: %v", err)
+					log.Println("🔄 Command parsing will use fallback logic")
+				}
+
+				if attempt < maxRetries {
+					log.Printf("🔄 Ollama connection attempt %d/%d failed, retrying in %v...", attempt, maxRetries, retryDelay)
+					time.Sleep(retryDelay)
+					continue
+				} else {
+					log.Printf("❌ Ollama connection failed after %d attempts. Service will continue with fallback logic.", maxRetries)
+					return
+				}
+			} else {
+				if attempt > 1 {
+					log.Printf("✅ Ollama connection recovered after %d attempts", attempt)
+				}
+				return
+			}
 		}
 	}()
 
@@ -413,15 +434,37 @@ func (as *AudioService) performArbitration(window *ArbitrationWindow) {
 // calculateSignalStrength computes RMS signal strength from audio samples
 func (as *AudioService) calculateSignalStrength(samples []float32) float64 {
 	if len(samples) == 0 {
+		logging.LogWarn("calculateSignalStrength: no samples provided")
 		return 0.0
 	}
 
 	var sum float64
+	var nonZeroSamples int
+	var maxSample float32
 	for _, sample := range samples {
 		sum += float64(sample * sample)
+		if sample != 0 {
+			nonZeroSamples++
+		}
+		absVal := sample
+		if absVal < 0 {
+			absVal = -absVal
+		}
+		if absVal > maxSample {
+			maxSample = absVal
+		}
 	}
 
 	rms := math.Sqrt(sum / float64(len(samples)))
+
+	logging.LogAudioProcessing("", "signal_strength_calculation",
+		zap.Int("total_samples", len(samples)),
+		zap.Int("non_zero_samples", nonZeroSamples),
+		zap.Float32("max_sample", maxSample),
+		zap.Float64("rms", rms),
+		zap.Float64("sum", sum),
+	)
+
 	return rms
 }
 
@@ -523,6 +566,12 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			if window == nil {
 				// Start new arbitration window
 				as.startArbitrationWindow(relayID, stream)
+				// Populate the wake word signal for the initial relay
+				as.streamsMutex.Lock()
+				if relay, exists := as.activeStreams[relayID]; exists {
+					relay.WakeWordSignal = wakeWordBuffer
+				}
+				as.streamsMutex.Unlock()
 			} else {
 				// Try to join existing window
 				if as.joinArbitrationWindow(relayID, stream) {
@@ -1039,17 +1088,25 @@ func findMax(data []float32) float32 {
 func bytesToFloat32Array(data []byte) []float32 {
 	// Validate input data
 	if len(data) == 0 {
+		logging.LogWarn("bytesToFloat32Array: empty input data")
 		return []float32{}
 	}
 
 	// Ensure even number of bytes for 16-bit PCM
 	dataLen := len(data)
 	if dataLen%2 != 0 {
+		logging.LogWarn("bytesToFloat32Array: odd number of bytes, dropping last byte",
+			zap.Int("original_length", len(data)),
+			zap.Int("adjusted_length", dataLen-1),
+		)
 		dataLen -= 1 // Drop the last incomplete sample
 	}
 
 	// Convert 16-bit PCM bytes to float32 samples
 	samples := make([]float32, dataLen/2)
+	var nonZeroSamples int
+	var maxAbsValue float32
+
 	for i := 0; i < len(samples); i++ {
 		// Add bounds checking
 		if i*2+1 >= len(data) {
@@ -1059,7 +1116,27 @@ func bytesToFloat32Array(data []byte) []float32 {
 		val := int16(data[i*2]) | int16(data[i*2+1])<<8
 		// Convert to float32 [-1,1]
 		samples[i] = float32(val) / 32767.0
+
+		// Track statistics for debugging
+		if samples[i] != 0 {
+			nonZeroSamples++
+		}
+		absVal := samples[i]
+		if absVal < 0 {
+			absVal = -absVal
+		}
+		if absVal > maxAbsValue {
+			maxAbsValue = absVal
+		}
 	}
+
+	logging.LogAudioProcessing("", "bytes_to_float32_conversion",
+		zap.Int("input_bytes", len(data)),
+		zap.Int("output_samples", len(samples)),
+		zap.Int("non_zero_samples", nonZeroSamples),
+		zap.Float32("max_abs_value", maxAbsValue),
+	)
+
 	return samples
 }
 
