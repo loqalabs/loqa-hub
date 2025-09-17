@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sync"
 	"testing"
@@ -320,4 +321,270 @@ func TestCleanupRelay(t *testing.T) {
 
 	// Test cleanup of nonexistent relay (should not panic)
 	as.cleanupRelay("nonexistent")
+}
+
+// TestRequestScopedArbitrationLifecycle tests the fix for EOF errors
+// by ensuring arbitration window and relay status are properly reset between requests
+func TestRequestScopedArbitrationLifecycle(t *testing.T) {
+	as := &AudioService{
+		activeStreams:             make(map[string]*RelayStream),
+		arbitrationWindowDuration: 100 * time.Millisecond,
+	}
+
+	relayID := "test-relay-001"
+
+	// Simulate first request: create arbitration window and make relay winner
+	stream := &MockStream{}
+	as.activeStreams[relayID] = &RelayStream{
+		Stream:    stream,
+		RelayID:   relayID,
+		Status:    RelayStatusConnected,
+		ConnectedAt: time.Now(),
+		CancelChannel: make(chan struct{}),
+	}
+
+	// Start arbitration window (single relay should win immediately)
+	window := as.startArbitrationWindow(relayID, stream)
+	as.performArbitration(window)
+
+	// Verify relay won arbitration
+	if window.WinnerID != relayID {
+		t.Errorf("Expected %s to win arbitration, got %s", relayID, window.WinnerID)
+	}
+
+	if as.activeStreams[relayID].Status != RelayStatusWinner {
+		t.Errorf("Expected relay status to be Winner, got %v", as.activeStreams[relayID].Status)
+	}
+
+	// Simulate request completion - this should clear arbitration state
+	as.streamsMutex.Lock()
+	if as.arbitrationWindow != nil && as.arbitrationWindow.WinnerID == relayID {
+		as.arbitrationWindow = nil
+	}
+	// Reset relay status to Connected for next request
+	if relay, exists := as.activeStreams[relayID]; exists {
+		relay.Status = RelayStatusConnected
+	}
+	as.streamsMutex.Unlock()
+
+	// Verify arbitration window is cleared
+	if as.arbitrationWindow != nil {
+		t.Error("Expected arbitration window to be cleared after request completion")
+	}
+
+	// Verify relay status is reset to Connected
+	if as.activeStreams[relayID].Status != RelayStatusConnected {
+		t.Errorf("Expected relay status to be reset to Connected, got %v", as.activeStreams[relayID].Status)
+	}
+
+	// Simulate second request: relay should be able to participate in new arbitration
+	if !as.isRelayActive(relayID) {
+		t.Error("Expected relay to be active for second request")
+	}
+
+	// Start new arbitration window for second request
+	window2 := as.startArbitrationWindow(relayID, stream)
+	as.performArbitration(window2)
+
+	// Verify relay can win again
+	if window2.WinnerID != relayID {
+		t.Errorf("Expected %s to win second arbitration, got %s", relayID, window2.WinnerID)
+	}
+
+	if as.activeStreams[relayID].Status != RelayStatusWinner {
+		t.Errorf("Expected relay status to be Winner in second request, got %v", as.activeStreams[relayID].Status)
+	}
+}
+
+// TestConsecutiveRequestsWithSingleRelay tests the specific EOF error scenario
+// where a single relay makes multiple consecutive requests
+func TestConsecutiveRequestsWithSingleRelay(t *testing.T) {
+	as := &AudioService{
+		activeStreams:             make(map[string]*RelayStream),
+		arbitrationWindowDuration: 50 * time.Millisecond,
+	}
+
+	relayID := "test-relay-001"
+	stream := &MockStream{}
+
+	// Add relay to active streams
+	as.activeStreams[relayID] = &RelayStream{
+		Stream:        stream,
+		RelayID:       relayID,
+		Status:        RelayStatusConnected,
+		ConnectedAt:   time.Now(),
+		CancelChannel: make(chan struct{}),
+	}
+
+	// Test multiple consecutive arbitration cycles
+	for i := 0; i < 3; i++ {
+		t.Run(fmt.Sprintf("Request_%d", i+1), func(t *testing.T) {
+			// Relay should be active for each request
+			if !as.isRelayActive(relayID) {
+				t.Errorf("Relay should be active for request %d", i+1)
+			}
+
+			// Start arbitration window
+			window := as.startArbitrationWindow(relayID, stream)
+
+			// Set some signal data
+			as.activeStreams[relayID].WakeWordSignal = []float32{0.5, 0.5, 0.5}
+
+			// Perform arbitration
+			as.performArbitration(window)
+
+			// Verify relay wins
+			if window.WinnerID != relayID {
+				t.Errorf("Request %d: Expected relay to win, got %s", i+1, window.WinnerID)
+			}
+
+			if as.activeStreams[relayID].Status != RelayStatusWinner {
+				t.Errorf("Request %d: Expected Winner status, got %v", i+1, as.activeStreams[relayID].Status)
+			}
+
+			// Simulate request completion lifecycle
+			as.streamsMutex.Lock()
+			if as.arbitrationWindow != nil && as.arbitrationWindow.WinnerID == relayID {
+				as.arbitrationWindow = nil
+			}
+			if relay, exists := as.activeStreams[relayID]; exists {
+				relay.Status = RelayStatusConnected
+			}
+			as.streamsMutex.Unlock()
+
+			// Verify clean state for next request
+			if as.arbitrationWindow != nil {
+				t.Errorf("Request %d: Arbitration window should be cleared", i+1)
+			}
+
+			if as.activeStreams[relayID].Status != RelayStatusConnected {
+				t.Errorf("Request %d: Status should be reset to Connected, got %v", i+1, as.activeStreams[relayID].Status)
+			}
+		})
+	}
+}
+
+// TestRelayStatusTransitions tests the relay status lifecycle through multiple states
+func TestRelayStatusTransitions(t *testing.T) {
+	as := &AudioService{
+		activeStreams:             make(map[string]*RelayStream),
+		arbitrationWindowDuration: 100 * time.Millisecond,
+	}
+
+	relayID := "test-relay-001"
+
+	// Test status transitions: Connected → Contending → Winner → Connected
+	tests := []struct {
+		name           string
+		initialStatus  RelayStatus
+		expectedActive bool
+		description    string
+	}{
+		{
+			name:           "Connected",
+			initialStatus:  RelayStatusConnected,
+			expectedActive: true,
+			description:    "Newly connected relay should be active",
+		},
+		{
+			name:           "Contending",
+			initialStatus:  RelayStatusContending,
+			expectedActive: true,
+			description:    "Relay in arbitration should be active",
+		},
+		{
+			name:           "Winner",
+			initialStatus:  RelayStatusWinner,
+			expectedActive: true,
+			description:    "Winning relay should be active",
+		},
+		{
+			name:           "Cancelled",
+			initialStatus:  RelayStatusCancelled,
+			expectedActive: false,
+			description:    "Cancelled relay should be inactive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			as.activeStreams[relayID] = &RelayStream{
+				RelayID: relayID,
+				Status:  tt.initialStatus,
+			}
+
+			isActive := as.isRelayActive(relayID)
+			if isActive != tt.expectedActive {
+				t.Errorf("%s: Expected active=%v, got %v", tt.description, tt.expectedActive, isActive)
+			}
+		})
+	}
+}
+
+// TestArbitrationWindowClearance tests that arbitration windows are properly cleared
+func TestArbitrationWindowClearance(t *testing.T) {
+	as := &AudioService{
+		activeStreams:             make(map[string]*RelayStream),
+		arbitrationWindowDuration: 100 * time.Millisecond,
+	}
+
+	relayID := "test-relay-001"
+	stream := &MockStream{}
+
+	// Add relay to active streams
+	as.activeStreams[relayID] = &RelayStream{
+		Stream:        stream,
+		RelayID:       relayID,
+		ConnectedAt:   time.Now(),
+		Status:        RelayStatusConnected,
+		CancelChannel: make(chan struct{}),
+	}
+
+	// Start arbitration window
+	window := as.startArbitrationWindow(relayID, stream)
+
+	// Verify window exists
+	as.streamsMutex.Lock()
+	windowExists := as.arbitrationWindow != nil
+	as.streamsMutex.Unlock()
+
+	if !windowExists {
+		t.Fatal("Expected arbitration window to be created")
+	}
+
+	// Set some signal data and perform arbitration
+	as.activeStreams[relayID].WakeWordSignal = []float32{0.5, 0.5, 0.5}
+	as.performArbitration(window)
+
+	// Verify window has a winner
+	if window.WinnerID != relayID {
+		t.Fatalf("Expected %s to win arbitration, got %s", relayID, window.WinnerID)
+	}
+
+	// Simulate request completion - clear window
+	as.streamsMutex.Lock()
+	if as.arbitrationWindow != nil && as.arbitrationWindow.WinnerID == relayID {
+		as.arbitrationWindow = nil
+	}
+	as.streamsMutex.Unlock()
+
+	// Verify window is cleared
+	as.streamsMutex.Lock()
+	windowCleared := as.arbitrationWindow == nil
+	as.streamsMutex.Unlock()
+
+	if !windowCleared {
+		t.Error("Expected arbitration window to be cleared")
+	}
+
+	// Verify new window can be created
+	window2 := as.startArbitrationWindow(relayID, stream)
+	if window2 == nil {
+		t.Error("Expected new arbitration window to be created")
+	}
+
+	// Verify it's a different window instance
+	if window == window2 {
+		t.Error("Expected different window instance")
+	}
 }
