@@ -326,12 +326,14 @@ func TestCleanupRelay(t *testing.T) {
 // TestRequestScopedArbitrationLifecycle tests the fix for EOF errors
 // by ensuring arbitration window and relay status are properly reset between requests
 func TestRequestScopedArbitrationLifecycle(t *testing.T) {
+	const testRelayID = "test-relay-001"
+
 	as := &AudioService{
 		activeStreams:             make(map[string]*RelayStream),
 		arbitrationWindowDuration: 100 * time.Millisecond,
 	}
 
-	relayID := "test-relay-001"
+	relayID := testRelayID
 
 	// Simulate first request: create arbitration window and make relay winner
 	stream := &MockStream{}
@@ -399,12 +401,14 @@ func TestRequestScopedArbitrationLifecycle(t *testing.T) {
 // TestConsecutiveRequestsWithSingleRelay tests the specific EOF error scenario
 // where a single relay makes multiple consecutive requests
 func TestConsecutiveRequestsWithSingleRelay(t *testing.T) {
+	const testRelayID = "test-relay-001"
+
 	as := &AudioService{
 		activeStreams:             make(map[string]*RelayStream),
 		arbitrationWindowDuration: 50 * time.Millisecond,
 	}
 
-	relayID := "test-relay-001"
+	relayID := testRelayID
 	stream := &MockStream{}
 
 	// Add relay to active streams
@@ -523,12 +527,14 @@ func TestRelayStatusTransitions(t *testing.T) {
 
 // TestArbitrationWindowClearance tests that arbitration windows are properly cleared
 func TestArbitrationWindowClearance(t *testing.T) {
+	const testRelayID = "test-relay-001"
+
 	as := &AudioService{
 		activeStreams:             make(map[string]*RelayStream),
 		arbitrationWindowDuration: 100 * time.Millisecond,
 	}
 
-	relayID := "test-relay-001"
+	relayID := testRelayID
 	stream := &MockStream{}
 
 	// Add relay to active streams
