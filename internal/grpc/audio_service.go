@@ -219,11 +219,32 @@ func createAudioService(transcriber llm.Transcriber, ttsClient llm.TextToSpeech,
 		}
 	}()
 
-	// Test connection to Ollama (non-blocking)
+	// Test connection to Ollama with automatic retry (non-blocking)
 	go func() {
-		if err := commandParser.TestConnection(); err != nil {
-			log.Printf("⚠️  Warning: Cannot connect to Ollama: %v", err)
-			log.Println("🔄 Command parsing will use fallback logic")
+		maxRetries := 10
+		retryDelay := 15 * time.Second
+
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			if err := commandParser.TestConnection(); err != nil {
+				if attempt == 1 {
+					log.Printf("⚠️  Warning: Cannot connect to Ollama: %v", err)
+					log.Println("🔄 Command parsing will use fallback logic")
+				}
+
+				if attempt < maxRetries {
+					log.Printf("🔄 Ollama connection attempt %d/%d failed, retrying in %v...", attempt, maxRetries, retryDelay)
+					time.Sleep(retryDelay)
+					continue
+				} else {
+					log.Printf("❌ Ollama connection failed after %d attempts. Service will continue with fallback logic.", maxRetries)
+					return
+				}
+			} else {
+				if attempt > 1 {
+					log.Printf("✅ Ollama connection recovered after %d attempts", attempt)
+				}
+				return
+			}
 		}
 	}()
 
