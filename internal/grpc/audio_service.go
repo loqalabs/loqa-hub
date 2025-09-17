@@ -500,10 +500,33 @@ func (as *AudioService) isRelayActive(relayID string) bool {
 
 	relay, exists := as.activeStreams[relayID]
 	if !exists {
+		logging.LogAudioProcessing(relayID, "relay_not_found_in_active_streams")
 		return false
 	}
 
-	return relay.Status == RelayStatusWinner || relay.Status == RelayStatusConnected
+	isActive := relay.Status == RelayStatusWinner ||
+		        relay.Status == RelayStatusConnected ||
+		        relay.Status == RelayStatusContending
+
+	// Debug logging to understand status
+	statusName := "unknown"
+	switch relay.Status {
+	case RelayStatusConnected:
+		statusName = "connected"
+	case RelayStatusContending:
+		statusName = "contending"
+	case RelayStatusWinner:
+		statusName = "winner"
+	case RelayStatusCancelled:
+		statusName = "cancelled"
+	}
+
+	logging.LogAudioProcessing(relayID, "relay_status_check",
+		zap.String("status", statusName),
+		zap.Bool("is_active", isActive),
+	)
+
+	return isActive
 }
 
 // cleanupRelay removes a relay from active tracking
@@ -1047,6 +1070,24 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 			// Set final response and store the complete voice event
 			voiceEvent.SetResponse(responseText)
 			as.storeVoiceEvent(voiceEvent)
+
+			// Clear arbitration window and reset relay status after successful processing
+			as.streamsMutex.Lock()
+			if as.arbitrationWindow != nil && as.arbitrationWindow.WinnerID == relayID {
+				as.arbitrationWindow = nil
+				logging.LogAudioProcessing(relayID, "arbitration_window_cleared",
+					zap.String("reason", "request_completed"),
+				)
+			}
+			// Reset relay status to Connected so it can participate in future arbitration
+			if relay, exists := as.activeStreams[relayID]; exists {
+				relay.Status = RelayStatusConnected
+				logging.LogAudioProcessing(relayID, "relay_status_reset",
+					zap.String("new_status", "connected"),
+					zap.String("reason", "ready_for_next_request"),
+				)
+			}
+			as.streamsMutex.Unlock()
 
 			logging.LogAudioProcessing(chunk.RelayId, "response_sent",
 				zap.String("event_uuid", voiceEvent.UUID),
