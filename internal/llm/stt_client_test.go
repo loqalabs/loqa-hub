@@ -1,6 +1,9 @@
 package llm
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -183,6 +186,233 @@ func TestEstimateConfidence(t *testing.T) {
 
 			if confidence < tt.minConf || confidence > tt.maxConf {
 				t.Errorf("estimateConfidence(%q) = %f, want between %f and %f", tt.input, confidence, tt.minConf, tt.maxConf)
+			}
+		})
+	}
+}
+
+func TestNewSTTClient(t *testing.T) {
+	tests := []struct {
+		name         string
+		baseURL      string
+		language     string
+		expectedURL  string
+		expectedLang string
+	}{
+		{
+			name:         "Default values",
+			baseURL:      "",
+			language:     "",
+			expectedURL:  "http://localhost:8000",
+			expectedLang: "en",
+		},
+		{
+			name:         "Custom URL and language",
+			baseURL:      "http://custom-stt:9000",
+			language:     "es",
+			expectedURL:  "http://custom-stt:9000",
+			expectedLang: "es",
+		},
+		{
+			name:         "Custom URL, default language",
+			baseURL:      "http://stt:8000",
+			language:     "",
+			expectedURL:  "http://stt:8000",
+			expectedLang: "en",
+		},
+		{
+			name:         "Default URL, custom language",
+			baseURL:      "",
+			language:     "fr",
+			expectedURL:  "http://localhost:8000",
+			expectedLang: "fr",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a mock server for health check
+			mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/health" {
+					w.WriteHeader(http.StatusOK)
+				}
+			}))
+			defer mockServer.Close()
+
+			// Always use mock server URL for testing to avoid network calls
+			baseURL := mockServer.URL
+
+			client, err := NewSTTClient(baseURL, tt.language)
+			if err != nil {
+				t.Fatalf("NewSTTClient() error = %v", err)
+			}
+
+			if client.language != tt.expectedLang {
+				t.Errorf("language = %q, want %q", client.language, tt.expectedLang)
+			}
+
+			// Since we're using mock server, just verify the language was set correctly
+			// The baseURL will be the mock server URL, not the expected URL
+		})
+	}
+}
+
+func TestSTTClient_LanguageParameterInRequest(t *testing.T) {
+	tests := []struct {
+		name             string
+		clientLanguage   string
+		expectedLanguage string
+	}{
+		{
+			name:             "English language",
+			clientLanguage:   "en",
+			expectedLanguage: "en",
+		},
+		{
+			name:             "Spanish language",
+			clientLanguage:   "es",
+			expectedLanguage: "es",
+		},
+		{
+			name:             "French language",
+			clientLanguage:   "fr",
+			expectedLanguage: "fr",
+		},
+		{
+			name:             "German language",
+			clientLanguage:   "de",
+			expectedLanguage: "de",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a mock STT server that captures the request
+			var capturedLanguage string
+			mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/health" {
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+
+				if r.URL.Path == "/v1/audio/transcriptions" {
+					// Parse the multipart form to extract the language parameter
+					err := r.ParseMultipartForm(32 << 20) // 32MB max
+					if err != nil {
+						t.Errorf("Failed to parse multipart form: %v", err)
+						return
+					}
+
+					capturedLanguage = r.FormValue("language")
+
+					// Return a mock response
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte(`{"text": "test transcription"}`))
+					return
+				}
+
+				w.WriteHeader(http.StatusNotFound)
+			}))
+			defer mockServer.Close()
+
+			// Create STT client with the test language
+			client, err := NewSTTClient(mockServer.URL, tt.clientLanguage)
+			if err != nil {
+				t.Fatalf("NewSTTClient() error = %v", err)
+			}
+
+			// Create dummy audio data
+			audioData := []float32{0.1, 0.2, 0.3, 0.4, 0.5}
+
+			// Call Transcribe (this should trigger the language parameter to be sent)
+			_, err = client.Transcribe(audioData, 16000)
+			if err != nil {
+				t.Fatalf("Transcribe() error = %v", err)
+			}
+
+			// Verify the language parameter was sent correctly
+			if capturedLanguage != tt.expectedLanguage {
+				t.Errorf("language parameter = %q, want %q", capturedLanguage, tt.expectedLanguage)
+			}
+		})
+	}
+}
+
+func TestSTTClient_ErrorHandling(t *testing.T) {
+	tests := []struct {
+		name           string
+		clientLanguage string
+		serverResponse func(w http.ResponseWriter, r *http.Request)
+		expectError    bool
+		errorContains  string
+	}{
+		{
+			name:           "Language validation error (422)",
+			clientLanguage: "invalid-lang",
+			serverResponse: func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/health" {
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				w.Write([]byte(`{"detail":[{"type":"enum","loc":["body","language"],"msg":"Invalid language code"}]}`))
+			},
+			expectError:   true,
+			errorContains: "422",
+		},
+		{
+			name:           "Server error (500)",
+			clientLanguage: "en",
+			serverResponse: func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/health" {
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+				w.WriteHeader(http.StatusInternalServerError)
+			},
+			expectError:   true,
+			errorContains: "500",
+		},
+		{
+			name:           "Valid request",
+			clientLanguage: "en",
+			serverResponse: func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/health" {
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"text": "hello world"}`))
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockServer := httptest.NewServer(http.HandlerFunc(tt.serverResponse))
+			defer mockServer.Close()
+
+			client, err := NewSTTClient(mockServer.URL, tt.clientLanguage)
+			if err != nil {
+				t.Fatalf("NewSTTClient() error = %v", err)
+			}
+
+			audioData := []float32{0.1, 0.2, 0.3}
+			_, err = client.Transcribe(audioData, 16000)
+
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error but got none")
+				} else if !strings.Contains(err.Error(), tt.errorContains) {
+					t.Errorf("Expected error to contain %q, got: %v", tt.errorContains, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
 			}
 		})
 	}

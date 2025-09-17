@@ -27,6 +27,7 @@ import (
 // to any OpenAI-compatible Speech-to-Text service
 type STTClient struct {
 	baseURL    string
+	language   string
 	httpClient *http.Client
 }
 
@@ -46,9 +47,13 @@ type PostProcessingResult struct {
 }
 
 // NewSTTClient creates a new OpenAI-compatible STT client
-func NewSTTClient(baseURL string) (*STTClient, error) {
+func NewSTTClient(baseURL, language string) (*STTClient, error) {
 	if baseURL == "" {
 		baseURL = "http://localhost:8000" // Default STT service address
+	}
+
+	if language == "" {
+		language = "en" // Default language
 	}
 
 	client := &http.Client{
@@ -57,6 +62,7 @@ func NewSTTClient(baseURL string) (*STTClient, error) {
 
 	s := &STTClient{
 		baseURL:    baseURL,
+		language:   language,
 		httpClient: client,
 	}
 
@@ -65,7 +71,9 @@ func NewSTTClient(baseURL string) (*STTClient, error) {
 		return nil, fmt.Errorf("STT service health check failed: %w", err)
 	}
 
-	logging.Sugar.Infow("Connected to STT REST service", "base_url", baseURL)
+	if logging.Sugar != nil {
+		logging.Sugar.Infow("Connected to STT REST service", "base_url", baseURL, "language", language)
+	}
 
 	return s, nil
 }
@@ -102,11 +110,13 @@ func (s *STTClient) Transcribe(audioData []float32, sampleRate int) (string, err
 	startTime := time.Now()
 	requestID := fmt.Sprintf("req_%d", startTime.UnixNano())
 
-	logging.Sugar.Infow("Sending transcription request",
-		"request_id", requestID,
-		"samples", len(audioData),
-		"sample_rate", sampleRate,
-	)
+	if logging.Sugar != nil {
+		logging.Sugar.Infow("Sending transcription request",
+			"request_id", requestID,
+			"samples", len(audioData),
+			"sample_rate", sampleRate,
+		)
+	}
 
 	// Convert float32 audio data to WAV bytes
 	wavData := s.float32ToWAV(audioData, sampleRate)
@@ -127,7 +137,7 @@ func (s *STTClient) Transcribe(audioData []float32, sampleRate int) (string, err
 
 	// Add optional parameters
 	_ = writer.WriteField("model", "tiny") // Use the model loaded in STT service
-	_ = writer.WriteField("language", "")  // Auto-detect
+	_ = writer.WriteField("language", s.language)  // Use configured language
 	_ = writer.WriteField("temperature", "0.0")
 	_ = writer.WriteField("response_format", "json")
 
@@ -169,16 +179,18 @@ func (s *STTClient) Transcribe(audioData []float32, sampleRate int) (string, err
 	// Post-process the transcription
 	processResult := s.postProcessTranscription(transcriptionResp.Text)
 
-	logging.Sugar.Infow("Transcription completed",
-		"request_id", requestID,
-		"processing_time_ms", processingTime.Milliseconds(),
-		"original_text", processResult.OriginalText,
-		"cleaned_text", processResult.CleanedText,
-		"wake_word_detected", processResult.WakeWordDetected,
-		"wake_word_variant", processResult.WakeWordVariant,
-		"confidence_estimate", processResult.ConfidenceEstimate,
-		"needs_confirmation", processResult.NeedsConfirmation,
-	)
+	if logging.Sugar != nil {
+		logging.Sugar.Infow("Transcription completed",
+			"request_id", requestID,
+			"processing_time_ms", processingTime.Milliseconds(),
+			"original_text", processResult.OriginalText,
+			"cleaned_text", processResult.CleanedText,
+			"wake_word_detected", processResult.WakeWordDetected,
+			"wake_word_variant", processResult.WakeWordVariant,
+			"confidence_estimate", processResult.ConfidenceEstimate,
+			"needs_confirmation", processResult.NeedsConfirmation,
+		)
+	}
 
 	// Return cleaned text for intent parsing
 	return processResult.CleanedText, nil
@@ -209,11 +221,13 @@ func (s *STTClient) TranscribeWithConfidence(audioData []float32, sampleRate int
 	startTime := time.Now()
 	requestID := fmt.Sprintf("req_%d", startTime.UnixNano())
 
-	logging.Sugar.Infow("Sending transcription request with confidence",
-		"request_id", requestID,
-		"samples", len(audioData),
-		"sample_rate", sampleRate,
-	)
+	if logging.Sugar != nil {
+		logging.Sugar.Infow("Sending transcription request with confidence",
+			"request_id", requestID,
+			"samples", len(audioData),
+			"sample_rate", sampleRate,
+		)
+	}
 
 	// Convert float32 audio data to WAV bytes
 	wavData := s.float32ToWAV(audioData, sampleRate)
@@ -246,7 +260,7 @@ func (s *STTClient) TranscribeWithConfidence(audioData []float32, sampleRate int
 
 	// Add optional parameters
 	_ = writer.WriteField("model", "tiny") // Use the model loaded in STT service
-	_ = writer.WriteField("language", "")  // Auto-detect
+	_ = writer.WriteField("language", s.language)  // Use configured language
 	_ = writer.WriteField("temperature", "0.0")
 	_ = writer.WriteField("response_format", "json")
 
@@ -318,16 +332,18 @@ func (s *STTClient) TranscribeWithConfidence(audioData []float32, sampleRate int
 	processResult := s.postProcessTranscription(transcriptionResp.Text)
 
 	processingTime := time.Since(startTime)
-	logging.Sugar.Infow("Transcription with confidence completed",
-		"request_id", requestID,
-		"processing_time_ms", processingTime.Milliseconds(),
-		"original_text", processResult.OriginalText,
-		"cleaned_text", processResult.CleanedText,
-		"wake_word_detected", processResult.WakeWordDetected,
-		"wake_word_variant", processResult.WakeWordVariant,
-		"confidence_estimate", processResult.ConfidenceEstimate,
-		"needs_confirmation", processResult.NeedsConfirmation,
-	)
+	if logging.Sugar != nil {
+		logging.Sugar.Infow("Transcription with confidence completed",
+			"request_id", requestID,
+			"processing_time_ms", processingTime.Milliseconds(),
+			"original_text", processResult.OriginalText,
+			"cleaned_text", processResult.CleanedText,
+			"wake_word_detected", processResult.WakeWordDetected,
+			"wake_word_variant", processResult.WakeWordVariant,
+			"confidence_estimate", processResult.ConfidenceEstimate,
+			"needs_confirmation", processResult.NeedsConfirmation,
+		)
+	}
 
 	return &TranscriptionResult{
 		Text:               processResult.CleanedText,
@@ -491,7 +507,9 @@ func (s *STTClient) estimateConfidence(text string) float64 {
 
 // Close cleans up resources
 func (s *STTClient) Close() error {
-	logging.Sugar.Infow("Closing STT client", "base_url", s.baseURL)
+	if logging.Sugar != nil {
+		logging.Sugar.Infow("Closing STT client", "base_url", s.baseURL)
+	}
 	// HTTP client doesn't need explicit cleanup
 	return nil
 }

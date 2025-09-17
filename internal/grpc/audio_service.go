@@ -151,8 +151,8 @@ func (as *AudioService) ExecuteCommand(ctx context.Context, cmd *llm.Command) er
 }
 
 // NewAudioServiceWithSTT creates a new audio service using OpenAI-compatible STT service
-func NewAudioServiceWithSTT(sttURL string, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
-	transcriber, err := llm.NewSTTClient(sttURL)
+func NewAudioServiceWithSTT(sttURL, sttLanguage string, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
+	transcriber, err := llm.NewSTTClient(sttURL, sttLanguage)
 	if err != nil {
 		return nil, err
 	}
@@ -160,9 +160,9 @@ func NewAudioServiceWithSTT(sttURL string, eventsStore *storage.VoiceEventsStore
 }
 
 // NewAudioServiceWithTTS creates a new audio service with both STT and TTS support
-func NewAudioServiceWithTTS(sttURL string, ttsConfig config.TTSConfig, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
+func NewAudioServiceWithTTS(sttURL, sttLanguage string, ttsConfig config.TTSConfig, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
 	// Initialize STT client
-	transcriber, err := llm.NewSTTClient(sttURL)
+	transcriber, err := llm.NewSTTClient(sttURL, sttLanguage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create STT client: %w", err)
 	}
