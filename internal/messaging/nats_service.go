@@ -248,6 +248,11 @@ func (ns *NATSService) IsConnected() bool {
 	return ns.conn != nil && ns.conn.IsConnected()
 }
 
+// GetConnection returns the underlying NATS connection
+func (ns *NATSService) GetConnection() *nats.Conn {
+	return ns.conn
+}
+
 // GetStats returns connection statistics
 func (ns *NATSService) GetStats() nats.Statistics {
 	if ns.conn != nil {

@@ -89,7 +89,7 @@ func NewStreamingAudioPipeline(ttsClient TextToSpeech, options *TTSOptions) *Str
 		options = &TTSOptions{
 			Voice:          "af_bella",
 			Speed:          1.0,
-			ResponseFormat: "mp3",
+			ResponseFormat: "wav",
 			Normalize:      true,
 		}
 	}

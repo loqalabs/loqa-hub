@@ -165,7 +165,7 @@ func (c *OpenAITTSClient) Synthesize(text string, options *TTSOptions) (*TTSResu
 
 	// Make HTTP request
 	ctx, cancel := context.WithTimeout(context.Background(), c.config.Timeout)
-	defer cancel()
+	// Note: Do not defer cancel() here as the context is needed to read the response body
 
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/audio/speech", bytes.NewBuffer(requestBody))
 	if err != nil {
@@ -216,6 +216,7 @@ func (c *OpenAITTSClient) Synthesize(text string, options *TTSOptions) (*TTSResu
 		Audio:       resp.Body,
 		ContentType: resp.Header.Get("Content-Type"),
 		Length:      resp.ContentLength,
+		Cleanup:     cancel,
 	}, nil
 }
 
