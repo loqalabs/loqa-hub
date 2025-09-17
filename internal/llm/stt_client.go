@@ -48,6 +48,11 @@ type PostProcessingResult struct {
 
 // NewSTTClient creates a new OpenAI-compatible STT client
 func NewSTTClient(baseURL, language string) (*STTClient, error) {
+	return NewSTTClientWithOptions(baseURL, language, true)
+}
+
+// NewSTTClientWithOptions creates a new OpenAI-compatible STT client with configurable health check
+func NewSTTClientWithOptions(baseURL, language string, enableHealthCheck bool) (*STTClient, error) {
 	if baseURL == "" {
 		baseURL = "http://localhost:8000" // Default STT service address
 	}
@@ -66,9 +71,11 @@ func NewSTTClient(baseURL, language string) (*STTClient, error) {
 		httpClient: client,
 	}
 
-	// Test connection with health check
-	if err := s.healthCheck(); err != nil {
-		return nil, fmt.Errorf("STT service health check failed: %w", err)
+	// Test connection with health check (skip for testing)
+	if enableHealthCheck {
+		if err := s.healthCheck(); err != nil {
+			return nil, fmt.Errorf("STT service health check failed: %w", err)
+		}
 	}
 
 	if logging.Sugar != nil {

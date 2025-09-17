@@ -161,8 +161,13 @@ func NewAudioServiceWithSTT(sttURL, sttLanguage string, eventsStore *storage.Voi
 
 // NewAudioServiceWithTTS creates a new audio service with both STT and TTS support
 func NewAudioServiceWithTTS(sttURL, sttLanguage string, ttsConfig config.TTSConfig, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
+	return NewAudioServiceWithTTSAndOptions(sttURL, sttLanguage, ttsConfig, eventsStore, true)
+}
+
+// NewAudioServiceWithTTSAndOptions creates a new audio service with configurable health checks (for testing)
+func NewAudioServiceWithTTSAndOptions(sttURL, sttLanguage string, ttsConfig config.TTSConfig, eventsStore *storage.VoiceEventsStore, enableHealthCheck bool) (*AudioService, error) {
 	// Initialize STT client
-	transcriber, err := llm.NewSTTClient(sttURL, sttLanguage)
+	transcriber, err := llm.NewSTTClientWithOptions(sttURL, sttLanguage, enableHealthCheck)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create STT client: %w", err)
 	}

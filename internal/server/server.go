@@ -45,6 +45,10 @@ type Server struct {
 }
 
 func New(cfg *config.Config) *Server {
+	return NewWithOptions(cfg, true)
+}
+
+func NewWithOptions(cfg *config.Config, enableHealthChecks bool) *Server {
 	mux := http.NewServeMux()
 
 	// Initialize database
@@ -69,7 +73,7 @@ func New(cfg *config.Config) *Server {
 
 	log.Printf("🎙️  Using STT service at: %s", cfg.STT.URL)
 	log.Printf("🔊 Using TTS service at: %s", cfg.TTS.URL)
-	audioService, err = grpcservice.NewAudioServiceWithTTS(cfg.STT.URL, cfg.STT.Language, cfg.TTS, eventsStore)
+	audioService, err = grpcservice.NewAudioServiceWithTTSAndOptions(cfg.STT.URL, cfg.STT.Language, cfg.TTS, eventsStore, enableHealthChecks)
 
 	if err != nil {
 		log.Fatalf("Failed to create audio service: %v", err)

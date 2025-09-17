@@ -36,7 +36,8 @@ func TestNew_WithGlobalConfig(t *testing.T) {
 	}
 
 	// Test that server creation doesn't panic and returns a valid server
-	server := New(cfg)
+	// Use NewWithOptions to skip health checks during testing
+	server := NewWithOptions(cfg, false)
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -128,7 +129,8 @@ func TestNew_STTLanguageConfiguration(t *testing.T) {
 			}
 
 			// Test that server creation works with different language configurations
-			server := New(cfg)
+			// Use NewWithOptions to skip health checks during testing
+			server := NewWithOptions(cfg, false)
 			if server == nil {
 				t.Fatal("New() returned nil server")
 			}
