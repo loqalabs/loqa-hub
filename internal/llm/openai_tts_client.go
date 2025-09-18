@@ -165,10 +165,11 @@ func (c *OpenAITTSClient) Synthesize(text string, options *TTSOptions) (*TTSResu
 
 	// Make HTTP request
 	ctx, cancel := context.WithTimeout(context.Background(), c.config.Timeout)
-	defer cancel()
+	// Note: Do not defer cancel() here as the context is needed to read the response body
 
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/audio/speech", bytes.NewBuffer(requestBody))
 	if err != nil {
+		cancel()
 		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
@@ -177,6 +178,7 @@ func (c *OpenAITTSClient) Synthesize(text string, options *TTSOptions) (*TTSResu
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		cancel()
 		if logging.Logger != nil {
 			logging.LogError(err, "TTS HTTP request failed",
 				zap.String("voice", voice),
@@ -191,6 +193,7 @@ func (c *OpenAITTSClient) Synthesize(text string, options *TTSOptions) (*TTSResu
 		if err := resp.Body.Close(); err != nil {
 			log.Printf("Warning: failed to close response body: %v", err)
 		}
+		cancel()
 		if logging.Logger != nil {
 			logging.LogWarn("TTS request failed",
 				zap.Int("status_code", resp.StatusCode),
@@ -216,6 +219,7 @@ func (c *OpenAITTSClient) Synthesize(text string, options *TTSOptions) (*TTSResu
 		Audio:       resp.Body,
 		ContentType: resp.Header.Get("Content-Type"),
 		Length:      resp.ContentLength,
+		Cleanup:     cancel,
 	}, nil
 }
 

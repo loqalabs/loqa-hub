@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+const healthEndpoint = "/health"
+
 func TestPostProcessTranscription(t *testing.T) {
 	client := &STTClient{}
 
@@ -233,7 +235,7 @@ func TestNewSTTClient(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a mock server for health check
 			mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/health" {
+				if r.URL.Path == healthEndpoint {
 					w.WriteHeader(http.StatusOK)
 				}
 			}))
@@ -290,7 +292,7 @@ func TestSTTClient_LanguageParameterInRequest(t *testing.T) {
 			// Create a mock STT server that captures the request
 			var capturedLanguage string
 			mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/health" {
+				if r.URL.Path == healthEndpoint {
 					w.WriteHeader(http.StatusOK)
 					return
 				}
@@ -308,7 +310,7 @@ func TestSTTClient_LanguageParameterInRequest(t *testing.T) {
 					// Return a mock response
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(`{"text": "test transcription"}`))
+					_, _ = w.Write([]byte(`{"text": "test transcription"}`))
 					return
 				}
 
@@ -351,12 +353,12 @@ func TestSTTClient_ErrorHandling(t *testing.T) {
 			name:           "Language validation error (422)",
 			clientLanguage: "invalid-lang",
 			serverResponse: func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/health" {
+				if r.URL.Path == healthEndpoint {
 					w.WriteHeader(http.StatusOK)
 					return
 				}
 				w.WriteHeader(http.StatusUnprocessableEntity)
-				w.Write([]byte(`{"detail":[{"type":"enum","loc":["body","language"],"msg":"Invalid language code"}]}`))
+				_, _ = w.Write([]byte(`{"detail":[{"type":"enum","loc":["body","language"],"msg":"Invalid language code"}]}`))
 			},
 			expectError:   true,
 			errorContains: "422",
@@ -365,7 +367,7 @@ func TestSTTClient_ErrorHandling(t *testing.T) {
 			name:           "Server error (500)",
 			clientLanguage: "en",
 			serverResponse: func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/health" {
+				if r.URL.Path == healthEndpoint {
 					w.WriteHeader(http.StatusOK)
 					return
 				}
@@ -378,13 +380,13 @@ func TestSTTClient_ErrorHandling(t *testing.T) {
 			name:           "Valid request",
 			clientLanguage: "en",
 			serverResponse: func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/health" {
+				if r.URL.Path == healthEndpoint {
 					w.WriteHeader(http.StatusOK)
 					return
 				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"text": "hello world"}`))
+				_, _ = w.Write([]byte(`{"text": "hello world"}`))
 			},
 			expectError: false,
 		},

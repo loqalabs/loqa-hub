@@ -42,7 +42,7 @@ func TestVoicePipelineEndToEnd(t *testing.T) {
 	// Start Docker Compose services
 	t.Log("Starting Docker Compose services...")
 	composeCmd := exec.CommandContext(ctx, "docker-compose", "up", "-d")
-	composeCmd.Dir = "../.." // Run from project root
+	composeCmd.Dir = "../../../loqa" // Run from main orchestration directory
 	if err := composeCmd.Run(); err != nil {
 		t.Fatalf("Failed to start Docker Compose: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestVoicePipelineEndToEnd(t *testing.T) {
 	defer func() {
 		t.Log("Stopping Docker Compose services...")
 		stopCmd := exec.Command("docker-compose", "down")
-		stopCmd.Dir = "../.."
+		stopCmd.Dir = "../../../loqa"
 		if err := stopCmd.Run(); err != nil {
 			t.Logf("Warning: Failed to stop Docker Compose: %v", err)
 		}
@@ -63,7 +63,7 @@ func TestVoicePipelineEndToEnd(t *testing.T) {
 
 	// Check if services are running
 	checkCmd := exec.CommandContext(ctx, "docker-compose", "ps")
-	checkCmd.Dir = "../.."
+	checkCmd.Dir = "../../../loqa"
 	output, err := checkCmd.Output()
 	if err != nil {
 		t.Fatalf("Failed to check Docker Compose status: %v", err)
@@ -89,7 +89,7 @@ func TestVoicePipelineEndToEnd(t *testing.T) {
 func testHubConnectivity(ctx context.Context) error {
 	// Simple connectivity test using grpcurl or similar
 	testCmd := exec.CommandContext(ctx, "docker-compose", "logs", "--tail=10", "loqa-hub")
-	testCmd.Dir = "../.."
+	testCmd.Dir = "../../../loqa"
 	output, err := testCmd.Output()
 	if err != nil {
 		return err
@@ -104,8 +104,8 @@ func testHubConnectivity(ctx context.Context) error {
 }
 
 func testRelayConnection(ctx context.Context) error {
-	// Check if test relay binary exists
-	relayPath := "../../bin/test-relay"
+	// Check if test relay binary exists in the loqa-relay repository
+	relayPath := "../../../loqa-relay/bin/test-relay"
 	if _, err := os.Stat(relayPath); os.IsNotExist(err) {
 		return nil // Skip if binary doesn't exist
 	}
@@ -115,7 +115,7 @@ func testRelayConnection(ctx context.Context) error {
 	defer cancel()
 
 	relayCmd := exec.CommandContext(relayCtx, relayPath, "--hub", "localhost:50051")
-	relayCmd.Dir = "../.."
+	relayCmd.Dir = "../../../loqa"
 
 	// Start relay and let it run briefly
 	if err := relayCmd.Start(); err != nil {

@@ -64,7 +64,7 @@ func TestSTTLanguageParameterEndToEndIntegration(t *testing.T) {
 					// Return successful response
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(`{"text": "integration test response"}`))
+					_, _ = w.Write([]byte(`{"text": "integration test response"}`))
 					return
 				}
 
@@ -104,7 +104,7 @@ func TestSTTLanguageParameterEndToEndIntegration(t *testing.T) {
 			}
 
 			// Clean up
-			client.Close()
+			_ = client.Close()
 		})
 	}
 }
@@ -122,12 +122,12 @@ func TestSTTLanguageParameterWithConfidenceIntegration(t *testing.T) {
 		}
 
 		if strings.HasPrefix(r.URL.Path, "/v1/audio/transcriptions") {
-			r.ParseMultipartForm(32 << 20)
+			_ = r.ParseMultipartForm(32 << 20)
 			capturedLanguage = r.FormValue("language")
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"text": "Hey Loqa turn on the lights"}`))
+			_, _ = w.Write([]byte(`{"text": "Hey Loqa turn on the lights"}`))
 			return
 		}
 
@@ -169,5 +169,5 @@ func TestSTTLanguageParameterWithConfidenceIntegration(t *testing.T) {
 		t.Errorf("Language parameter in HTTP request = %q, want %q", capturedLanguage, "es")
 	}
 
-	client.Close()
+	_ = client.Close()
 }

@@ -99,13 +99,13 @@ func TestLoad_EnvironmentVariables(t *testing.T) {
 		{
 			name: "TTS configuration",
 			envVars: map[string]string{
-				"TTS_URL":             "http://custom-tts:8881/v1",
-				"TTS_VOICE":           "en_male",
-				"TTS_SPEED":           "1.5",
-				"TTS_FORMAT":          "wav",
-				"TTS_MAX_CONCURRENT":  "15",
-				"TTS_NORMALIZE":       "false",
-				"TTS_TIMEOUT":         "15s",
+				"TTS_URL":              "http://custom-tts:8881/v1",
+				"TTS_VOICE":            "en_male",
+				"TTS_SPEED":            "1.5",
+				"TTS_FORMAT":           "wav",
+				"TTS_MAX_CONCURRENT":   "15",
+				"TTS_NORMALIZE":        "false",
+				"TTS_TIMEOUT":          "15s",
 				"TTS_FALLBACK_ENABLED": "false",
 			},
 			validate: func(t *testing.T, cfg *Config) {
@@ -153,7 +153,7 @@ func TestLoad_EnvironmentVariables(t *testing.T) {
 			// Clear environment and set test vars
 			clearEnvVars()
 			for key, value := range tt.envVars {
-				os.Setenv(key, value)
+				_ = os.Setenv(key, value)
 			}
 			defer clearEnvVars()
 
@@ -169,9 +169,9 @@ func TestLoad_EnvironmentVariables(t *testing.T) {
 
 func TestLoad_InvalidConfiguration(t *testing.T) {
 	tests := []struct {
-		name         string
-		envVars      map[string]string
-		expectError  bool
+		name          string
+		envVars       map[string]string
+		expectError   bool
 		errorContains string
 	}{
 		{
@@ -204,7 +204,7 @@ func TestLoad_InvalidConfiguration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			clearEnvVars()
 			for key, value := range tt.envVars {
-				os.Setenv(key, value)
+				_ = os.Setenv(key, value)
 			}
 			defer clearEnvVars()
 
@@ -258,7 +258,7 @@ func TestSTTLanguageConfigurationBackwardsCompatibility(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			clearEnvVars()
 			if tt.sttLanguage != "" {
-				os.Setenv("STT_LANGUAGE", tt.sttLanguage)
+				_ = os.Setenv("STT_LANGUAGE", tt.sttLanguage)
 			}
 			defer clearEnvVars()
 
@@ -292,7 +292,7 @@ func clearEnvVars() {
 	}
 
 	for _, envVar := range envVars {
-		os.Unsetenv(envVar)
+		_ = os.Unsetenv(envVar)
 	}
 }
 

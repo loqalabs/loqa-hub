@@ -19,6 +19,7 @@
 package grpc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -30,10 +31,10 @@ import (
 	"time"
 
 	"github.com/loqalabs/loqa-hub/internal/config"
-	"github.com/loqalabs/loqa-hub/internal/events"
 	"github.com/loqalabs/loqa-hub/internal/llm"
 	"github.com/loqalabs/loqa-hub/internal/logging"
 	"github.com/loqalabs/loqa-hub/internal/messaging"
+	"github.com/loqalabs/loqa-hub/internal/skills"
 	"github.com/loqalabs/loqa-hub/internal/storage"
 	pb "github.com/loqalabs/loqa-proto/go/audio"
 	"go.uber.org/zap"
@@ -45,6 +46,7 @@ type RelayStream struct {
 	RelayID        string
 	ConnectedAt    time.Time
 	WakeWordSignal []float32
+	SpeechAudio    []float32
 	SignalStrength float64
 	Status         RelayStatus
 	CancelChannel  chan struct{}
@@ -73,12 +75,15 @@ type ArbitrationWindow struct {
 // AudioService implements the gRPC AudioService
 type AudioService struct {
 	pb.UnimplementedAudioServiceServer
-	transcriber             llm.Transcriber
-	commandParser           *llm.CommandParser
-	ttsClient               llm.TextToSpeech
-	natsService             *messaging.NATSService
-	eventsStore             *storage.VoiceEventsStore
-	currentExecutionContext *CommandExecutionContext
+	transcriber               llm.Transcriber
+	commandParser             *llm.CommandParser             // Fallback parser
+	streamingPredictiveBridge *llm.StreamingPredictiveBridge // Primary processing engine
+	ttsClient                 llm.TextToSpeech
+	ttsConfig                 config.TTSConfig // TTS configuration for dynamic options
+	natsService               *messaging.NATSService
+	audioStreamPublisher      *messaging.AudioStreamPublisher // NATS chunked audio streaming
+	eventsStore               *storage.VoiceEventsStore
+	currentExecutionContext   *CommandExecutionContext
 
 	// Multi-relay collision detection
 	arbitrationWindow         *ArbitrationWindow
@@ -156,7 +161,7 @@ func NewAudioServiceWithSTT(sttURL, sttLanguage string, eventsStore *storage.Voi
 	if err != nil {
 		return nil, err
 	}
-	return createAudioService(transcriber, nil, eventsStore)
+	return createAudioService(transcriber, nil, config.TTSConfig{}, eventsStore)
 }
 
 // NewAudioServiceWithTTS creates a new audio service with both STT and TTS support
@@ -189,11 +194,11 @@ func NewAudioServiceWithTTSAndOptions(sttURL, sttLanguage string, ttsConfig conf
 		}
 	}
 
-	return createAudioService(transcriber, ttsClient, eventsStore)
+	return createAudioService(transcriber, ttsClient, ttsConfig, eventsStore)
 }
 
 // createAudioService is a helper to create the service with any transcriber implementation
-func createAudioService(transcriber llm.Transcriber, ttsClient llm.TextToSpeech, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
+func createAudioService(transcriber llm.Transcriber, ttsClient llm.TextToSpeech, ttsConfig config.TTSConfig, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
 
 	// Initialize command parser with Ollama
 	ollamaURL := os.Getenv("OLLAMA_URL")
@@ -208,18 +213,46 @@ func createAudioService(transcriber llm.Transcriber, ttsClient llm.TextToSpeech,
 
 	commandParser := llm.NewCommandParser(ollamaURL, ollamaModel)
 
+	// Initialize StreamingPredictiveBridge (if possible) for fast responses
+	var streamingPredictiveBridge *llm.StreamingPredictiveBridge
+
+	// Create a minimal skill manager implementation for the bridge
+	// Note: In production, this should be passed from the server
+	skillManagerAdapter := &SkillManagerAdapter{}
+
+	// Try to create the streaming predictive bridge
+	streamingPredictiveBridge = createStreamingPredictiveBridge(ollamaURL, ollamaModel, skillManagerAdapter, ttsClient)
+
 	// Initialize NATS service
 	natsService, err := messaging.NewNATSService()
 	if err != nil {
 		log.Printf("⚠️  Warning: Failed to create NATS service: %v", err)
 	}
 
-	// Connect to NATS (non-blocking)
+	// Create AudioService first
+	audioService := &AudioService{
+		transcriber:               transcriber,
+		commandParser:             commandParser,
+		streamingPredictiveBridge: streamingPredictiveBridge,
+		ttsClient:                 ttsClient,
+		ttsConfig:                 ttsConfig,
+		natsService:               natsService,
+		audioStreamPublisher:      nil, // Will be set when NATS connects
+		eventsStore:               eventsStore,
+		activeStreams:             make(map[string]*RelayStream),
+		arbitrationWindowDuration: 300 * time.Millisecond, // Configurable arbitration window
+	}
+
+	// Connect to NATS and initialize audio stream publisher (non-blocking)
 	go func() {
 		if natsService != nil {
 			if err := natsService.Connect(); err != nil {
 				log.Printf("⚠️  Warning: Cannot connect to NATS: %v", err)
 				log.Println("🔄 Events will not be published to message bus")
+			} else {
+				// Initialize audio stream publisher with 4KB chunks and assign to service
+				audioService.audioStreamPublisher = messaging.NewAudioStreamPublisher(natsService.GetConnection(), 4096)
+				log.Println("🎵 Audio stream publisher initialized")
 			}
 		}
 	}()
@@ -253,15 +286,122 @@ func createAudioService(transcriber llm.Transcriber, ttsClient llm.TextToSpeech,
 		}
 	}()
 
-	return &AudioService{
-		transcriber:               transcriber,
-		commandParser:             commandParser,
-		ttsClient:                 ttsClient,
-		natsService:               natsService,
-		eventsStore:               eventsStore,
-		activeStreams:             make(map[string]*RelayStream),
-		arbitrationWindowDuration: 300 * time.Millisecond, // Configurable arbitration window
-	}, nil
+	return audioService, nil
+}
+
+// SkillManagerAdapter provides a minimal SkillManagerInterface implementation
+// for cases where a full skill manager is not available
+type SkillManagerAdapter struct{}
+
+// FindSkillForIntent implements a basic skill finding logic
+func (sma *SkillManagerAdapter) FindSkillForIntent(intent *skills.VoiceIntent) (skills.SkillPlugin, error) {
+	return nil, fmt.Errorf("no skills available")
+}
+
+// streamAudioResponse sends audio response via NATS chunked streaming instead of gRPC
+func (s *AudioService) streamAudioResponse(relayID string, audioData []byte, audioFormat string, messageType string, priority int) error {
+	if s.audioStreamPublisher == nil {
+		log.Printf("⚠️  NATS audio publisher not available, skipping response to relay %s", relayID)
+		return nil
+	}
+
+	if len(audioData) == 0 {
+		log.Printf("🎵 No audio data to stream for relay %s, sending text-only response", relayID)
+		return nil
+	}
+
+	// Determine sample rate based on audio format
+	sampleRate := 16000 // Default for PCM
+	if audioFormat == "mp3" {
+		sampleRate = 22050 // Common for TTS
+	}
+
+	// Create audio reader from byte data
+	audioReader := bytes.NewReader(audioData)
+
+	// Stream audio to specific relay
+	if err := s.audioStreamPublisher.StreamAudioToRelay(
+		relayID,
+		audioReader,
+		audioFormat,
+		sampleRate,
+		messageType,
+		priority,
+	); err != nil {
+		return fmt.Errorf("failed to stream audio to relay %s: %w", relayID, err)
+	}
+
+	log.Printf("🎵 Successfully streamed audio response to relay %s (%d bytes, %s)",
+		relayID, len(audioData), messageType)
+	return nil
+}
+
+// ExecuteSkill implements basic skill execution
+func (sma *SkillManagerAdapter) ExecuteSkill(ctx context.Context, skill skills.SkillPlugin, intent *skills.VoiceIntent) (*skills.SkillResponse, error) {
+	return nil, fmt.Errorf("skill execution not available")
+}
+
+// createStreamingPredictiveBridge initializes the streaming predictive bridge
+func createStreamingPredictiveBridge(ollamaURL, ollamaModel string, skillManager llm.SkillManagerInterface, ttsClient llm.TextToSpeech) *llm.StreamingPredictiveBridge {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("⚠️  Failed to create StreamingPredictiveBridge, will use fallback: %v", r)
+		}
+	}()
+
+	// Create base command parser for classifier
+	baseCommandParser := llm.NewCommandParser(ollamaURL, ollamaModel)
+
+	// Create predictive response engine
+	predictiveEngine := llm.NewPredictiveResponseEngine(skillManager)
+	if predictiveEngine == nil {
+		log.Printf("⚠️  Failed to create PredictiveResponseEngine, will use fallback")
+		return nil
+	}
+
+	// Create async execution pipeline
+	executionPipeline := llm.NewAsyncExecutionPipeline(skillManager)
+	if executionPipeline == nil {
+		log.Printf("⚠️  Failed to create AsyncExecutionPipeline, will use fallback")
+		return nil
+	}
+
+	// Create device reliability tracker
+	reliabilityTracker := llm.NewDeviceReliabilityTracker()
+
+	// Create command classifier
+	commandClassifier := llm.NewCommandClassifier(baseCommandParser, reliabilityTracker)
+	if commandClassifier == nil {
+		log.Printf("⚠️  Failed to create CommandClassifier, will use fallback")
+		return nil
+	}
+
+	// Create status manager with proper initialization
+	statusManager := llm.NewStatusManager(ttsClient)
+
+	// Create streaming command parser
+	streamingParser := llm.NewStreamingCommandParser(ollamaURL, ollamaModel, true)
+	if streamingParser == nil {
+		log.Printf("⚠️  Failed to create StreamingCommandParser, will use fallback")
+		return nil
+	}
+
+	// Create the bridge
+	bridge := llm.NewStreamingPredictiveBridge(
+		streamingParser,
+		predictiveEngine,
+		statusManager,
+		commandClassifier,
+		executionPipeline,
+	)
+
+	if bridge != nil {
+		log.Printf("✅ StreamingPredictiveBridge initialized successfully")
+	} else {
+		log.Printf("⚠️  Failed to create StreamingPredictiveBridge, will use fallback")
+	}
+
+	return bridge
 }
 
 // startArbitrationWindow initiates a new arbitration window
@@ -430,10 +570,248 @@ func (as *AudioService) performArbitration(window *ArbitrationWindow) {
 		}
 	}
 
+	// Process the winning relay's audio
+	if winnerID != "" {
+		if winnerRelay, exists := window.Relays[winnerID]; exists {
+			logging.LogAudioProcessing(winnerID, "arbitration_winner_processing_started")
+
+			// Process the winner's full audio (wake word + speech)
+			go as.processWinningRelayAudio(winnerRelay)
+		}
+	}
+
 	// Clear arbitration window
 	as.streamsMutex.Lock()
 	as.arbitrationWindow = nil
 	as.streamsMutex.Unlock()
+}
+
+// processWinningRelayAudio handles transcription and response generation for the arbitration winner
+func (as *AudioService) processWinningRelayAudio(relay *RelayStream) {
+	// Combine wake word signal and speech audio for full transcription
+	var fullAudio []float32
+	fullAudio = append(fullAudio, relay.WakeWordSignal...)
+	fullAudio = append(fullAudio, relay.SpeechAudio...)
+
+	if len(fullAudio) == 0 {
+		logging.LogWarn("processWinningRelayAudio: no audio data to process",
+			zap.String("relay_id", relay.RelayID))
+		return
+	}
+
+	logging.LogAudioProcessing(relay.RelayID, "winner_transcription_starting",
+		zap.Int("total_samples", len(fullAudio)),
+		zap.Int("wake_word_samples", len(relay.WakeWordSignal)),
+		zap.Int("speech_samples", len(relay.SpeechAudio)),
+	)
+
+	// Transcribe the full audio
+	result, err := as.transcriber.TranscribeWithConfidence(fullAudio, 16000)
+	if err != nil {
+		logging.LogWarn("Transcription failed for winning relay",
+			zap.String("relay_id", relay.RelayID),
+			zap.Error(err))
+
+		// Send error response
+		as.sendErrorResponse(relay, "Sorry, I couldn't hear you clearly. Please try again.")
+		return
+	}
+
+	if result.Text == "" {
+		logging.LogAudioProcessing(relay.RelayID, "winner_no_speech_detected")
+		as.sendErrorResponse(relay, "I didn't hear anything. Please try again.")
+		return
+	}
+
+	logging.LogAudioProcessing(relay.RelayID, "winner_transcription_completed",
+		zap.String("transcription", result.Text),
+		zap.Float64("confidence", result.ConfidenceEstimate),
+	)
+
+	// Process the command using StreamingPredictiveBridge or fallback
+	as.processTranscriptionForRelay(relay, result.Text)
+}
+
+// processTranscriptionForRelay handles command processing and response generation
+func (as *AudioService) processTranscriptionForRelay(relay *RelayStream, transcription string) {
+	var bridgeSession *llm.BridgeSession
+	var multiCmd *llm.MultiCommand
+	var err error
+
+	// Try StreamingPredictiveBridge first for fast response
+	if as.streamingPredictiveBridge != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		bridgeSession, err = as.streamingPredictiveBridge.ProcessVoiceCommand(ctx, transcription)
+		if err == nil && bridgeSession != nil && bridgeSession.PredictiveResponse != nil {
+			logging.LogAudioProcessing(relay.RelayID, "winner_streaming_bridge_success",
+				zap.String("transcription", transcription),
+				zap.String("immediate_ack", bridgeSession.PredictiveResponse.ImmediateAck),
+			)
+
+			// Send immediate response
+			as.sendSuccessResponse(relay, transcription, bridgeSession.PredictiveResponse.ImmediateAck)
+			return
+		}
+
+		logging.LogAudioProcessing(relay.RelayID, "winner_streaming_bridge_fallback",
+			zap.Error(err),
+		)
+	}
+
+	// Fallback: Parse command using traditional LLM multi-command support
+	multiCmd, err = as.commandParser.ParseMultiCommand(transcription)
+	if err != nil {
+		logging.LogWarn("Command parsing failed for winning relay",
+			zap.String("relay_id", relay.RelayID),
+			zap.String("transcription", transcription),
+			zap.Error(err))
+
+		as.sendErrorResponse(relay, "Sorry, I couldn't understand that command.")
+		return
+	}
+
+	if len(multiCmd.Commands) == 0 {
+		logging.LogAudioProcessing(relay.RelayID, "winner_no_commands_found",
+			zap.String("transcription", transcription))
+		as.sendErrorResponse(relay, "I'm not sure how to help with that.")
+		return
+	}
+
+	// Execute commands and send response
+	logging.LogAudioProcessing(relay.RelayID, "winner_command_execution_starting",
+		zap.Int("command_count", len(multiCmd.Commands)),
+	)
+
+	// Use the first command's response for simplicity
+	command := multiCmd.Commands[0]
+	as.sendSuccessResponse(relay, transcription, command.Response)
+}
+
+// sendSuccessResponse sends a successful voice response to the relay
+func (as *AudioService) sendSuccessResponse(relay *RelayStream, transcription, responseText string) {
+	response := &pb.AudioResponse{
+		Success:       true,
+		Transcription: transcription,
+		ResponseText:  responseText,
+		Command:       "voice_command_success",
+	}
+
+	// Generate TTS audio if available
+	if as.ttsClient != nil {
+		ttsOptions := &llm.TTSOptions{
+			Voice:          as.ttsConfig.Voice,
+			Speed:          as.ttsConfig.Speed,
+			ResponseFormat: as.ttsConfig.ResponseFormat,
+		}
+		ttsResult, err := as.ttsClient.Synthesize(responseText, ttsOptions)
+		if err != nil {
+			log.Printf("❌ TTS synthesis failed: %v", err)
+		} else if ttsResult == nil {
+			log.Printf("❌ TTS result is nil")
+		} else if ttsResult.Audio == nil {
+			log.Printf("❌ TTS result.Audio is nil")
+		} else {
+			// Read audio data immediately to avoid context cancellation
+			audioBytes, err := io.ReadAll(ttsResult.Audio)
+			// Close immediately after reading
+			if closer, ok := ttsResult.Audio.(io.Closer); ok {
+				_ = closer.Close()
+			}
+			// Clean up TTS resources (including context cancellation)
+			if ttsResult.Cleanup != nil {
+				ttsResult.Cleanup()
+			}
+
+			if err != nil {
+				log.Printf("❌ Failed to read TTS audio data: %v", err)
+			} else if len(audioBytes) == 0 {
+				log.Printf("❌ TTS audio data is empty")
+			} else {
+				response.ResponseAudio = audioBytes
+				response.AudioFormat = ttsOptions.ResponseFormat
+				response.AudioDuration = float32(ttsResult.Length) / 16000.0 // Approximate duration
+				log.Printf("✅ TTS audio ready: %d bytes, format: %s", len(audioBytes), ttsOptions.ResponseFormat)
+			}
+		}
+	}
+
+	// Stream success response via NATS instead of gRPC
+	if len(response.ResponseAudio) > 0 {
+		if err := as.streamAudioResponse(
+			relay.RelayID,
+			response.ResponseAudio,
+			response.AudioFormat,
+			"response",
+			3, // medium priority
+		); err != nil {
+			logging.LogWarn("Failed to stream success audio to relay",
+				zap.String("relay_id", relay.RelayID),
+				zap.Error(err))
+		}
+	} else {
+		log.Printf("🎵 No TTS audio for success response to relay %s", relay.RelayID)
+	}
+
+	logging.LogAudioProcessing(relay.RelayID, "winner_response_sent",
+		zap.String("response_text", responseText),
+		zap.Bool("has_audio", len(response.ResponseAudio) > 0),
+	)
+}
+
+// sendErrorResponse sends an error response to the relay
+func (as *AudioService) sendErrorResponse(relay *RelayStream, errorMessage string) {
+	response := &pb.AudioResponse{
+		Success:      false,
+		ResponseText: errorMessage,
+		Command:      "error",
+	}
+
+	// Generate TTS audio for error message
+	if as.ttsClient != nil {
+		ttsOptions := &llm.TTSOptions{
+			Voice:          as.ttsConfig.Voice,
+			Speed:          as.ttsConfig.Speed,
+			ResponseFormat: as.ttsConfig.ResponseFormat,
+		}
+		ttsResult, err := as.ttsClient.Synthesize(errorMessage, ttsOptions)
+		if err == nil && ttsResult != nil && ttsResult.Audio != nil {
+			// Read audio data immediately to avoid context cancellation
+			audioBytes, readErr := io.ReadAll(ttsResult.Audio)
+			// Close immediately after reading
+			if closer, ok := ttsResult.Audio.(io.Closer); ok {
+				_ = closer.Close()
+			}
+			// Clean up TTS resources (including context cancellation)
+			if ttsResult.Cleanup != nil {
+				ttsResult.Cleanup()
+			}
+
+			if readErr == nil && len(audioBytes) > 0 {
+				response.ResponseAudio = audioBytes
+				response.AudioFormat = ttsOptions.ResponseFormat
+				response.AudioDuration = float32(len(audioBytes)) / 16000.0 // Approximate
+			}
+		}
+	}
+
+	// Stream error response via NATS instead of gRPC
+	if len(response.ResponseAudio) > 0 {
+		if err := as.streamAudioResponse(
+			relay.RelayID,
+			response.ResponseAudio,
+			response.AudioFormat,
+			"error",
+			4, // lower priority for errors
+		); err != nil {
+			logging.LogWarn("Failed to stream error audio to relay",
+				zap.String("relay_id", relay.RelayID),
+				zap.Error(err))
+		}
+	} else {
+		log.Printf("🎵 No TTS audio for error response to relay %s", relay.RelayID)
+	}
 }
 
 // calculateSignalStrength computes RMS signal strength from audio samples
@@ -510,8 +888,8 @@ func (as *AudioService) isRelayActive(relayID string) bool {
 	}
 
 	isActive := relay.Status == RelayStatusWinner ||
-		        relay.Status == RelayStatusConnected ||
-		        relay.Status == RelayStatusContending
+		relay.Status == RelayStatusConnected ||
+		relay.Status == RelayStatusContending
 
 	// Debug logging to understand status
 	statusName := "unknown"
@@ -611,524 +989,60 @@ func (as *AudioService) StreamAudio(stream pb.AudioService_StreamAudioServer) er
 					as.streamsMutex.Unlock()
 				} else {
 					// Window closed, send cancellation
-					response := &pb.AudioResponse{
-						RequestId:     relayID,
-						Transcription: "",
-						Command:       "relay_too_late",
-						ResponseText:  "Arbitration window closed. Please try again.",
-						Success:       false,
-					}
-					if err := stream.Send(response); err != nil {
-						logging.LogError(err, "Error sending too-late response")
-					}
+					// Relay too late - no need to send response in fire-and-forget model
+					log.Printf("⏰ Relay %s attempted connection after arbitration window closed", relayID)
 					return nil
 				}
 			}
+		} else {
+			// Collect speech audio (non-wake-word chunks) for arbitration winner processing
+			audioData := bytesToFloat32Array(chunk.AudioData)
+			as.streamsMutex.Lock()
+			if relay, exists := as.activeStreams[relayID]; exists {
+				relay.SpeechAudio = append(relay.SpeechAudio, audioData...)
+			}
+			as.streamsMutex.Unlock()
 		}
 
 		// Handle end of speech processing
 		if chunk.IsEndOfSpeech {
+			// Note: Audio processing is now handled by the arbitration system
+			// The winning relay will be processed automatically via processWinningRelayAudio()
+			// This preserves the connection for response delivery but doesn't duplicate processing
+
+			logging.LogAudioProcessing(relayID, "end_of_speech_detected",
+				zap.String("processing_note", "arbitration_system_handles_winner"),
+			)
+
 			// Check if this relay is still active (not cancelled during arbitration)
 			if !as.isRelayActive(relayID) {
 				logging.LogAudioProcessing(relayID, "relay_cancelled_before_processing")
 				return nil
 			}
 
-			// Wait for arbitration to complete if still in progress
-			maxWait := time.Now().Add(500 * time.Millisecond) // Max wait for arbitration
-			for as.arbitrationWindow != nil && time.Now().Before(maxWait) {
-				time.Sleep(10 * time.Millisecond)
-			}
+			// Wait for arbitration-based processing to complete and send response
+			// The winning relay will be processed via processWinningRelayAudio()
+			// Don't exit - keep connection alive to receive response
 
-			// Final check if relay won arbitration
-			if !as.isRelayActive(relayID) {
-				logging.LogAudioProcessing(relayID, "relay_lost_arbitration")
-				return nil
-			}
-			logging.LogAudioProcessing(chunk.RelayId, "processing_utterance")
+			logging.LogAudioProcessing(relayID, "waiting_for_arbitration_response")
 
-			// Create voice event for tracking
-			voiceEvent := events.NewVoiceEvent(chunk.RelayId, chunk.RelayId)
-
-			// Convert audio bytes back to float32
-			audioData := bytesToFloat32Array(chunk.AudioData)
-
-			// Validate converted audio data
-			if len(audioData) == 0 {
-				logging.LogWarn("Empty audio data after conversion",
-					zap.String("relay_id", chunk.RelayId),
-					zap.Int("original_bytes", len(chunk.AudioData)),
-				)
-				voiceEvent.SetResponse("Invalid audio data received")
-				as.storeVoiceEvent(voiceEvent)
-
-				// Send error response back to relay
-				response := &pb.AudioResponse{
-					RequestId:     chunk.RelayId,
-					Transcription: "",
-					Command:       "error",
-					ResponseText:  "Invalid audio data received. Please try again.",
-					Success:       false,
-				}
-				if err := stream.Send(response); err != nil {
-					logging.LogError(err, "Error sending empty-audio response to relay")
-					return err
-				}
-				continue
-			}
-
-			// Set audio metadata (safe conversion from int32 to int)
-			sampleRate := int(chunk.SampleRate)
-			voiceEvent.SetAudioMetadata(audioData, sampleRate, chunk.IsWakeWord)
-
-			// Transcribe audio using STT service with confidence (with panic recovery and detailed logging)
-			var transcription string
-			var transcriptionResult *llm.TranscriptionResult
-			var err error
-
-			// Log audio data characteristics before STT call
-			logging.LogAudioProcessing(chunk.RelayId, "stt_pre_call",
-				zap.Int("samples_count", len(audioData)),
-				zap.Int("sample_rate", sampleRate), // Use the validated sample rate
-				zap.Float32("audio_min", findMin(audioData)),
-				zap.Float32("audio_max", findMax(audioData)),
-				zap.String("event_uuid", voiceEvent.UUID),
-			)
-
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						err = fmt.Errorf("STT transcription panic: %v", r)
-						logging.LogError(err, "STT panic recovered",
-							zap.String("relay_id", chunk.RelayId),
-							zap.String("event_uuid", voiceEvent.UUID),
-							zap.Int("samples_count", len(audioData)),
-						)
-					}
-				}()
-
-				logging.LogAudioProcessing(chunk.RelayId, "stt_calling",
-					zap.String("event_uuid", voiceEvent.UUID),
-				)
-
-				transcriptionResult, err = as.transcriber.TranscribeWithConfidence(audioData, sampleRate)
-				if err == nil && transcriptionResult != nil {
-					transcription = transcriptionResult.Text
-				}
-
-				logging.LogAudioProcessing(chunk.RelayId, "stt_returned",
-					zap.String("event_uuid", voiceEvent.UUID),
-					zap.Bool("success", err == nil),
-					zap.Int("transcription_length", len(transcription)),
-					zap.Float64("confidence_estimate", func() float64 {
-						if transcriptionResult != nil {
-							return transcriptionResult.ConfidenceEstimate
-						}
-						return 0.0
-					}()),
-					zap.Bool("wake_word_detected", func() bool {
-						if transcriptionResult != nil {
-							return transcriptionResult.WakeWordDetected
-						}
-						return false
-					}()),
-					zap.Bool("needs_confirmation", func() bool {
-						if transcriptionResult != nil {
-							return transcriptionResult.NeedsConfirmation
-						}
-						return false
-					}()),
-				)
-			}()
-
-			if err != nil {
-				logging.LogError(err, "Error transcribing audio",
-					zap.String("relay_id", chunk.RelayId),
-					zap.String("event_uuid", voiceEvent.UUID),
-				)
-				voiceEvent.SetError(err)
-				voiceEvent.SetResponse("Sorry, I couldn't process your audio. Please try again.")
-				as.storeVoiceEvent(voiceEvent)
-
-				// Send error response back to relay
-				response := &pb.AudioResponse{
-					RequestId:     chunk.RelayId,
-					Transcription: "",
-					Command:       "error",
-					ResponseText:  "Sorry, I couldn't process your audio. Please try again.",
-					Success:       false,
-				}
-				if err := stream.Send(response); err != nil {
-					logging.LogError(err, "Error sending error response to relay")
-					return err
-				}
-				continue
-			}
-
-			// Set transcription result (with original transcription for logging)
-			if transcriptionResult != nil {
-				voiceEvent.SetTranscription(transcriptionResult.Text)
-			} else {
-				voiceEvent.SetTranscription(transcription)
-			}
-
-			logging.LogAudioProcessing(chunk.RelayId, "transcribed",
-				zap.String("event_uuid", voiceEvent.UUID),
-				zap.Int("audio_samples", len(audioData)),
-				zap.String("transcription", transcription),
-				zap.Bool("wake_word", chunk.IsWakeWord),
-				zap.Float64("confidence_estimate", func() float64 {
-					if transcriptionResult != nil {
-						return transcriptionResult.ConfidenceEstimate
-					}
-					return 0.0
-				}()),
-				zap.Bool("wake_word_detected", func() bool {
-					if transcriptionResult != nil {
-						return transcriptionResult.WakeWordDetected
-					}
-					return false
-				}()),
-				zap.String("wake_word_variant", func() string {
-					if transcriptionResult != nil {
-						return transcriptionResult.WakeWordVariant
-					}
-					return ""
-				}()),
-			)
-
-			// Handle low confidence or empty transcriptions
-			if transcription == "" {
-				logging.LogAudioProcessing(chunk.RelayId, "no_speech_detected",
-					zap.String("event_uuid", voiceEvent.UUID),
-				)
-				voiceEvent.SetResponse("No speech detected")
-				as.storeVoiceEvent(voiceEvent)
-
-				// Send response back to relay for no speech detected
-				response := &pb.AudioResponse{
-					RequestId:     chunk.RelayId,
-					Transcription: "",
-					Command:       "no_speech",
-					ResponseText:  "I didn't hear anything. Please try again.",
-					Success:       true,
-				}
-				if err := stream.Send(response); err != nil {
-					logging.LogError(err, "Error sending no-speech response to relay")
-					return err
-				}
-				continue
-			}
-
-			// Handle low confidence transcriptions that need confirmation
-			if transcriptionResult != nil && transcriptionResult.NeedsConfirmation {
-				logging.LogAudioProcessing(chunk.RelayId, "low_confidence_detected",
-					zap.String("event_uuid", voiceEvent.UUID),
-					zap.Float64("confidence", transcriptionResult.ConfidenceEstimate),
-					zap.String("transcription", transcription),
-				)
-
-				confirmationMessage := fmt.Sprintf("I'm not sure I heard you correctly. Did you say '%s'? Please repeat if that's not right.", transcription)
-				voiceEvent.SetResponse(confirmationMessage)
-				as.storeVoiceEvent(voiceEvent)
-
-				// Send confirmation request back to relay
-				response := &pb.AudioResponse{
-					RequestId:     chunk.RelayId,
-					Transcription: transcription,
-					Command:       "confirmation_needed",
-					ResponseText:  confirmationMessage,
-					Success:       true,
-				}
-				if err := stream.Send(response); err != nil {
-					logging.LogError(err, "Error sending confirmation response to relay")
-					return err
-				}
-				continue
-			}
-
-			// Parse command using LLM (with multi-command support)
-			multiCmd, err := as.commandParser.ParseMultiCommand(transcription)
-			if err != nil {
-				logging.LogError(err, "Error parsing multi-command",
-					zap.String("relay_id", chunk.RelayId),
-					zap.String("event_uuid", voiceEvent.UUID),
-					zap.String("transcription", transcription),
-				)
-				// Fallback to single unknown command
-				multiCmd = &llm.MultiCommand{
-					Commands: []llm.Command{{
-						Intent:     "unknown",
-						Entities:   make(map[string]string),
-						Confidence: 0.0,
-						Response:   "I'm having trouble understanding you right now.",
-					}},
-					IsMulti:          false,
-					OriginalText:     transcription,
-					CombinedResponse: "I'm having trouble understanding you right now.",
+			// Wait longer for arbitration system to complete and send response
+			// The processWinningRelayAudio will send response via relay.Stream.Send()
+			for i := 0; i < 50; i++ { // Wait up to 5 seconds for response
+				time.Sleep(100 * time.Millisecond)
+				// Check if arbitration is complete and relay still active
+				if as.arbitrationWindow == nil {
+					break // Arbitration completed
 				}
 			}
 
-			var commandStr string
-			var responseText string
-			var primaryCommand *llm.Command
-
-			// Handle multi-command or single command
-			if multiCmd.IsMulti && len(multiCmd.Commands) > 1 {
-				// Multi-command processing
-				logging.LogAudioProcessing(chunk.RelayId, "multi_command_detected",
-					zap.String("event_uuid", voiceEvent.UUID),
-					zap.Int("command_count", len(multiCmd.Commands)),
-					zap.String("original_text", multiCmd.OriginalText),
-				)
-
-				// Set execution context for command execution
-				as.SetCommandExecutionContext(&CommandExecutionContext{
-					RelayID:       chunk.RelayId,
-					RequestID:     chunk.RelayId,
-					EventUUID:     voiceEvent.UUID,
-					Transcription: transcription,
-				})
-
-				// Execute commands sequentially using command queue
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-
-				queue := llm.NewCommandQueue(multiCmd.Commands, 5*time.Second, true)
-				execResult, execErr := queue.Execute(ctx, as)
-
-				if execErr != nil {
-					logging.LogError(execErr, "Multi-command execution failed",
-						zap.String("relay_id", chunk.RelayId),
-						zap.String("event_uuid", voiceEvent.UUID),
-					)
-					commandStr = "multi_command_failed"
-					responseText = "I had trouble executing some of your commands."
-				} else {
-					commandStr = fmt.Sprintf("multi_%s", multiCmd.Commands[0].Intent)
-					responseText = execResult.CombinedResponse
-					if execResult.RollbackOccurred {
-						responseText += " Some commands were rolled back due to failures."
-					}
-
-					logging.LogAudioProcessing(chunk.RelayId, "multi_command_completed",
-						zap.String("event_uuid", voiceEvent.UUID),
-						zap.Bool("success", execResult.Success),
-						zap.Duration("duration", execResult.TotalDuration),
-						zap.Int("completed_commands", len(execResult.CompletedItems)),
-						zap.Bool("rollback_occurred", execResult.RollbackOccurred),
-					)
-				}
-
-				// Use first command for voice event tracking
-				primaryCommand = &multiCmd.Commands[0]
-			} else {
-				// Single command processing (existing logic)
-				if len(multiCmd.Commands) > 0 {
-					primaryCommand = &multiCmd.Commands[0]
-				} else {
-					// Create a default unknown command
-					defaultCmd := llm.Command{
-						Intent:     "unknown",
-						Entities:   make(map[string]string),
-						Confidence: 0.0,
-						Response:   "I'm not sure what you want me to do.",
-					}
-					primaryCommand = &defaultCmd
-				}
-				commandStr = primaryCommand.Intent
-				responseText = primaryCommand.Response
-
-				logging.LogAudioProcessing(chunk.RelayId, "single_command_parsed",
-					zap.String("event_uuid", voiceEvent.UUID),
-					zap.String("intent", primaryCommand.Intent),
-					zap.Float64("confidence", primaryCommand.Confidence),
-					zap.Any("entities", primaryCommand.Entities),
-				)
-			}
-
-			// Set command parsing results for voice event
-			voiceEvent.SetCommandResult(primaryCommand.Intent, primaryCommand.Entities, primaryCommand.Confidence)
-
-			// Publish command event to NATS (only for single commands or primary command in multi-command)
-			if as.natsService != nil && as.natsService.IsConnected() {
-				// For multi-commands, individual commands are published during execution
-				// Here we publish the primary/summary command event
-				commandEvent := &messaging.CommandEvent{
-					RelayID:       chunk.RelayId,
-					Transcription: transcription,
-					Intent:        primaryCommand.Intent,
-					Entities:      primaryCommand.Entities,
-					Confidence:    primaryCommand.Confidence,
-					Timestamp:     time.Now().UnixNano(),
-					RequestID:     chunk.RelayId, // Using relay ID as request ID for now
-				}
-
-				if err := as.natsService.PublishVoiceCommand(commandEvent); err != nil {
-					logging.LogWarn("Failed to publish voice command to NATS",
-						zap.Error(err),
-						zap.String("relay_id", chunk.RelayId),
-						zap.String("event_uuid", voiceEvent.UUID),
-					)
-				} else {
-					logging.LogNATSEvent("loqa.voice.commands", "published",
-						zap.String("relay_id", chunk.RelayId),
-						zap.String("intent", primaryCommand.Intent),
-					)
-				}
-
-				// If this is a device command, also publish a device command event
-				if as.isDeviceCommand(primaryCommand.Intent) {
-					deviceCommand := as.createDeviceCommand(commandEvent)
-					if deviceCommand != nil {
-						if err := as.natsService.PublishDeviceCommand(deviceCommand); err != nil {
-							logging.LogWarn("Failed to publish device command to NATS",
-								zap.Error(err),
-								zap.String("device_type", deviceCommand.DeviceType),
-							)
-						} else {
-							logging.LogNATSEvent("loqa.devices.commands", "published",
-								zap.String("device_type", deviceCommand.DeviceType),
-								zap.String("action", deviceCommand.Action),
-							)
-						}
-					}
-				}
-			}
-
-			// Generate TTS audio if TTS client is available and responseText is not empty
-			var ttsAudioData []byte
-			var ttsAudioFormat string
-			var ttsAudioDuration float32
-
-			if as.ttsClient != nil && responseText != "" {
-				ttsOptions := &llm.TTSOptions{
-					ResponseFormat: "mp3", // Default format, could be configurable
-					Speed:          1.0,   // Default speed, could be configurable
-					Normalize:      true,  // Default normalization
-				}
-
-				ttsResult, err := as.ttsClient.Synthesize(responseText, ttsOptions)
-				if err != nil {
-					logging.LogWarn("TTS synthesis failed, sending text-only response",
-						zap.Error(err),
-						zap.String("relay_id", chunk.RelayId),
-						zap.String("event_uuid", voiceEvent.UUID),
-						zap.String("response_text", responseText),
-					)
-				} else {
-					// Read audio data from the result
-					audioBytes, readErr := io.ReadAll(ttsResult.Audio)
-					if readErr != nil {
-						logging.LogWarn("Failed to read TTS audio data",
-							zap.Error(readErr),
-							zap.String("relay_id", chunk.RelayId),
-							zap.String("event_uuid", voiceEvent.UUID),
-						)
-					} else {
-						ttsAudioData = audioBytes
-						ttsAudioFormat = ttsOptions.ResponseFormat
-						if ttsResult.Length > 0 {
-							// Estimate duration based on typical bitrates
-							// For MP3 at 128kbps: ~16KB per second
-							ttsAudioDuration = float32(len(audioBytes)) / (16 * 1024)
-						}
-
-						logging.LogTTSOperation("synthesis_success",
-							zap.String("relay_id", chunk.RelayId),
-							zap.String("event_uuid", voiceEvent.UUID),
-							zap.Int("audio_bytes", len(audioBytes)),
-							zap.String("format", ttsAudioFormat),
-							zap.Float32("duration", ttsAudioDuration),
-						)
-					}
-
-					// Close the audio stream
-					if closer, ok := ttsResult.Audio.(io.Closer); ok {
-						if err := closer.Close(); err != nil {
-							logging.LogError(err, "Failed to close TTS audio stream")
-						}
-					}
-				}
-			}
-
-			// Send response back to relay
-			response := &pb.AudioResponse{
-				RequestId:     chunk.RelayId, // Use relay ID as request ID
-				Transcription: transcription,
-				Command:       commandStr,
-				ResponseText:  responseText,
-				Success:       true,
-				ResponseAudio: ttsAudioData,
-				AudioFormat:   ttsAudioFormat,
-				AudioDuration: ttsAudioDuration,
-			}
-
-			if err := stream.Send(response); err != nil {
-				logging.LogError(err, "Error sending response to relay",
-					zap.String("relay_id", chunk.RelayId),
-					zap.String("event_uuid", voiceEvent.UUID),
-				)
-				return err
-			}
-
-			// Set final response and store the complete voice event
-			voiceEvent.SetResponse(responseText)
-			as.storeVoiceEvent(voiceEvent)
-
-			// Clear arbitration window and reset relay status after successful processing
-			as.streamsMutex.Lock()
-			if as.arbitrationWindow != nil && as.arbitrationWindow.WinnerID == relayID {
-				as.arbitrationWindow = nil
-				logging.LogAudioProcessing(relayID, "arbitration_window_cleared",
-					zap.String("reason", "request_completed"),
-				)
-			}
-			// Reset relay status to Connected so it can participate in future arbitration
-			if relay, exists := as.activeStreams[relayID]; exists {
-				relay.Status = RelayStatusConnected
-				logging.LogAudioProcessing(relayID, "relay_status_reset",
-					zap.String("new_status", "connected"),
-					zap.String("reason", "ready_for_next_request"),
-				)
-			}
-			as.streamsMutex.Unlock()
-
-			logging.LogAudioProcessing(chunk.RelayId, "response_sent",
-				zap.String("event_uuid", voiceEvent.UUID),
-				zap.String("intent", commandStr),
-				zap.String("response", responseText),
-			)
+			logging.LogAudioProcessing(relayID, "arbitration_wait_completed")
+			return nil // Exit after arbitration processing is done
 		}
 	}
 }
 
 // Helper functions for audio analysis
-func findMin(data []float32) float32 {
-	if len(data) == 0 {
-		return 0
-	}
-	min := data[0]
-	for _, v := range data {
-		if v < min {
-			min = v
-		}
-	}
-	return min
-}
-
-func findMax(data []float32) float32 {
-	if len(data) == 0 {
-		return 0
-	}
-	max := data[0]
-	for _, v := range data {
-		if v > max {
-			max = v
-		}
-	}
-	return max
-}
 
 // Helper function to convert bytes back to float32 array
 func bytesToFloat32Array(data []byte) []float32 {
@@ -1258,27 +1172,4 @@ func (as *AudioService) mapIntentToAction(intent string) string {
 		"volume":   "volume",
 	}
 	return actionMap[intent]
-}
-
-// storeVoiceEvent stores a voice event in the database
-func (as *AudioService) storeVoiceEvent(voiceEvent *events.VoiceEvent) {
-	if as.eventsStore == nil {
-		logging.LogWarn("Events store not available, skipping voice event storage",
-			zap.String("event_uuid", voiceEvent.UUID),
-		)
-		return
-	}
-
-	if err := as.eventsStore.Insert(voiceEvent); err != nil {
-		logging.LogError(err, "Failed to store voice event",
-			zap.String("event_uuid", voiceEvent.UUID),
-			zap.String("relay_id", voiceEvent.RelayID),
-		)
-	} else {
-		logging.LogDatabaseOperation("insert", "voice_events",
-			zap.String("event_uuid", voiceEvent.UUID),
-			zap.String("intent", voiceEvent.Intent),
-			zap.Bool("success", voiceEvent.Success),
-		)
-	}
 }

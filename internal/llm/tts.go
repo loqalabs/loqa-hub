@@ -35,6 +35,7 @@ type TTSResult struct {
 	Audio       io.Reader // Audio stream
 	ContentType string    // MIME type of the audio
 	Length      int64     // Audio length in bytes (-1 if unknown)
+	Cleanup     func()    // Optional cleanup function for resources
 }
 
 // TextToSpeech defines the interface for text-to-speech synthesis services

@@ -130,7 +130,7 @@ func Load() (*Config, error) {
 			URL:             getEnvString("TTS_URL", "http://localhost:8880/v1"),
 			Voice:           getEnvString("TTS_VOICE", "af_bella"),
 			Speed:           getEnvFloat32("TTS_SPEED", 1.0),
-			ResponseFormat:  getEnvString("TTS_FORMAT", "mp3"),
+			ResponseFormat:  getEnvString("TTS_FORMAT", "wav"),
 			Normalize:       getEnvBool("TTS_NORMALIZE", true),
 			MaxConcurrent:   getEnvInt("TTS_MAX_CONCURRENT", 10),
 			Timeout:         getEnvDuration("TTS_TIMEOUT", 10*time.Second),
