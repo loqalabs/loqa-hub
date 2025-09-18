@@ -79,6 +79,7 @@ type AudioService struct {
 	commandParser             *llm.CommandParser             // Fallback parser
 	streamingPredictiveBridge *llm.StreamingPredictiveBridge // Primary processing engine
 	ttsClient                 llm.TextToSpeech
+	ttsConfig                 config.TTSConfig // TTS configuration for dynamic options
 	natsService               *messaging.NATSService
 	audioStreamPublisher      *messaging.AudioStreamPublisher // NATS chunked audio streaming
 	eventsStore               *storage.VoiceEventsStore
@@ -160,7 +161,7 @@ func NewAudioServiceWithSTT(sttURL, sttLanguage string, eventsStore *storage.Voi
 	if err != nil {
 		return nil, err
 	}
-	return createAudioService(transcriber, nil, eventsStore)
+	return createAudioService(transcriber, nil, config.TTSConfig{}, eventsStore)
 }
 
 // NewAudioServiceWithTTS creates a new audio service with both STT and TTS support
@@ -193,11 +194,11 @@ func NewAudioServiceWithTTSAndOptions(sttURL, sttLanguage string, ttsConfig conf
 		}
 	}
 
-	return createAudioService(transcriber, ttsClient, eventsStore)
+	return createAudioService(transcriber, ttsClient, ttsConfig, eventsStore)
 }
 
 // createAudioService is a helper to create the service with any transcriber implementation
-func createAudioService(transcriber llm.Transcriber, ttsClient llm.TextToSpeech, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
+func createAudioService(transcriber llm.Transcriber, ttsClient llm.TextToSpeech, ttsConfig config.TTSConfig, eventsStore *storage.VoiceEventsStore) (*AudioService, error) {
 
 	// Initialize command parser with Ollama
 	ollamaURL := os.Getenv("OLLAMA_URL")
@@ -234,6 +235,7 @@ func createAudioService(transcriber llm.Transcriber, ttsClient llm.TextToSpeech,
 		commandParser:             commandParser,
 		streamingPredictiveBridge: streamingPredictiveBridge,
 		ttsClient:                 ttsClient,
+		ttsConfig:                 ttsConfig,
 		natsService:               natsService,
 		audioStreamPublisher:      nil, // Will be set when NATS connects
 		eventsStore:               eventsStore,
@@ -699,9 +701,9 @@ func (as *AudioService) sendSuccessResponse(relay *RelayStream, transcription, r
 	// Generate TTS audio if available
 	if as.ttsClient != nil {
 		ttsOptions := &llm.TTSOptions{
-			Voice:          "af_bella",
-			Speed:          1.0,
-			ResponseFormat: "mp3",
+			Voice:          as.ttsConfig.Voice,
+			Speed:          as.ttsConfig.Speed,
+			ResponseFormat: as.ttsConfig.ResponseFormat,
 		}
 		ttsResult, err := as.ttsClient.Synthesize(responseText, ttsOptions)
 		if err != nil {
@@ -769,9 +771,9 @@ func (as *AudioService) sendErrorResponse(relay *RelayStream, errorMessage strin
 	// Generate TTS audio for error message
 	if as.ttsClient != nil {
 		ttsOptions := &llm.TTSOptions{
-			Voice:          "af_bella",
-			Speed:          1.0,
-			ResponseFormat: "mp3",
+			Voice:          as.ttsConfig.Voice,
+			Speed:          as.ttsConfig.Speed,
+			ResponseFormat: as.ttsConfig.ResponseFormat,
 		}
 		ttsResult, err := as.ttsClient.Synthesize(errorMessage, ttsOptions)
 		if err == nil && ttsResult != nil && ttsResult.Audio != nil {

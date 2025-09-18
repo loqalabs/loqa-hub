@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loqalabs/loqa-hub/internal/config"
 	"github.com/loqalabs/loqa-hub/internal/llm"
 	"github.com/loqalabs/loqa-hub/internal/skills"
 	"github.com/loqalabs/loqa-hub/internal/storage"
@@ -150,7 +151,11 @@ func createTestAudioService(t *testing.T) *AudioService {
 		audioData:   []byte("test audio data"),
 	}
 
-	service, err := createAudioService(mockTranscriber, mockTTS, eventsStore)
+	service, err := createAudioService(mockTranscriber, mockTTS, config.TTSConfig{
+		Voice:          "test_voice",
+		Speed:          1.0,
+		ResponseFormat: "wav",
+	}, eventsStore)
 	if err != nil {
 		t.Fatalf("Failed to create test audio service: %v", err)
 	}
