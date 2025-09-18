@@ -715,7 +715,7 @@ func (as *AudioService) sendSuccessResponse(relay *RelayStream, transcription, r
 			audioBytes, err := io.ReadAll(ttsResult.Audio)
 			// Close immediately after reading
 			if closer, ok := ttsResult.Audio.(io.Closer); ok {
-				closer.Close()
+				_ = closer.Close()
 			}
 			// Clean up TTS resources (including context cancellation)
 			if ttsResult.Cleanup != nil {
@@ -779,7 +779,7 @@ func (as *AudioService) sendErrorResponse(relay *RelayStream, errorMessage strin
 			audioBytes, readErr := io.ReadAll(ttsResult.Audio)
 			// Close immediately after reading
 			if closer, ok := ttsResult.Audio.(io.Closer); ok {
-				closer.Close()
+				_ = closer.Close()
 			}
 			// Clean up TTS resources (including context cancellation)
 			if ttsResult.Cleanup != nil {

@@ -374,7 +374,7 @@ func (aep *AsyncExecutionPipeline) generateSuccessMessage(task *ExecutionTask, r
 }
 
 // generateErrorMessage creates user-friendly error messages
-func (aep *AsyncExecutionPipeline) generateErrorMessage(task *ExecutionTask, err error) string {
+func (aep *AsyncExecutionPipeline) generateErrorMessage(task *ExecutionTask, _ error) string {
 	// Extract device/location info for personalized error messages
 	entities := task.Intent.Entities
 	if location, ok := entities["location"]; ok {

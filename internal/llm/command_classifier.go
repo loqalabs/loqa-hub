@@ -234,7 +234,7 @@ func (cc *CommandClassifier) extractIntentCategory(intent string, entities map[s
 }
 
 // extractOperationType identifies the type of operation being performed
-func (cc *CommandClassifier) extractOperationType(intent string, entities map[string]string) OperationType {
+func (cc *CommandClassifier) extractOperationType(intent string, _ map[string]string) OperationType {
 	intentLower := strings.ToLower(intent)
 
 	// Check for query operations
@@ -348,7 +348,7 @@ func (cc *CommandClassifier) determineResponseType(confidence, reliability float
 }
 
 // determineUpdateStrategy decides when and how to send follow-up messages
-func (cc *CommandClassifier) determineUpdateStrategy(responseType PredictiveType, category IntentCategory, operation OperationType, executionTime time.Duration) UpdateStrategy {
+func (cc *CommandClassifier) determineUpdateStrategy(responseType PredictiveType, category IntentCategory, _ OperationType, executionTime time.Duration) UpdateStrategy {
 	switch responseType {
 	case PredictiveOptimistic:
 		// Reliable operations - only report failures
