@@ -20,7 +20,10 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"math"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -102,11 +105,11 @@ type TestTTSClient struct {
 func NewTestTTSClient() *TestTTSClient {
 	return &TestTTSClient{
 		responses: map[string][]byte{
-			"Turning on the kitchen lights now":      []byte("audio_data_turn_on"),
-			"The kitchen lights are now on.":         []byte("audio_data_lights_on"),
-			"Turning off the bedroom lights":         []byte("audio_data_turn_off"),
+			"Turning on the kitchen lights now":         []byte("audio_data_turn_on"),
+			"The kitchen lights are now on.":            []byte("audio_data_lights_on"),
+			"Turning off the bedroom lights":            []byte("audio_data_turn_off"),
 			"I didn't hear anything. Please try again.": []byte("audio_data_no_speech"),
-			"I'm not sure I heard you correctly":     []byte("audio_data_confirmation"),
+			"I'm not sure I heard you correctly":        []byte("audio_data_confirmation"),
 		},
 	}
 }
@@ -502,10 +505,3 @@ func generateTestAudioBytes(numSamples int) []byte {
 	}
 	return audioBytes
 }
-
-// Need to import these for the helper function
-import (
-	"fmt"
-	"math"
-	"net"
-)

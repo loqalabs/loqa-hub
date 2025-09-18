@@ -319,7 +319,7 @@ func (spb *StreamingPredictiveBridge) fallbackToStreamingOnly(ctx context.Contex
 }
 
 // startStreamingForVisualFeedback provides immediate visual response in hybrid mode
-func (spb *StreamingPredictiveBridge) startStreamingForVisualFeedback(ctx context.Context, session *BridgeSession) {
+func (spb *StreamingPredictiveBridge) startStreamingForVisualFeedback(_ context.Context, session *BridgeSession) {
 	// Create visual confirmation message
 	visualResponse := fmt.Sprintf("Processing: %s", session.PredictiveResponse.ImmediateAck)
 
@@ -377,7 +377,7 @@ func (spb *StreamingPredictiveBridge) monitorHybridExecution(ctx context.Context
 
 			// Forward status update
 			statusUpdate.ExecutionID = session.SessionID
-			spb.statusManager.ProcessStatusUpdate(statusUpdate)
+			_ = spb.statusManager.ProcessStatusUpdate(statusUpdate)
 
 		case <-time.After(30 * time.Second):
 			// Timeout
@@ -407,7 +407,7 @@ func (spb *StreamingPredictiveBridge) monitorPredictiveExecution(ctx context.Con
 
 			// Process status update
 			statusUpdate.ExecutionID = session.SessionID
-			spb.statusManager.ProcessStatusUpdate(statusUpdate)
+			_ = spb.statusManager.ProcessStatusUpdate(statusUpdate)
 
 		case <-time.After(30 * time.Second):
 			log.Printf("⏰ Predictive execution timed out for session: %s", session.SessionID)

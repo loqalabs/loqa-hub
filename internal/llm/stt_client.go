@@ -143,8 +143,8 @@ func (s *STTClient) Transcribe(audioData []float32, sampleRate int) (string, err
 	}
 
 	// Add optional parameters
-	_ = writer.WriteField("model", "tiny") // Use the model loaded in STT service
-	_ = writer.WriteField("language", s.language)  // Use configured language
+	_ = writer.WriteField("model", "tiny")        // Use the model loaded in STT service
+	_ = writer.WriteField("language", s.language) // Use configured language
 	_ = writer.WriteField("temperature", "0.0")
 	_ = writer.WriteField("response_format", "json")
 
@@ -266,8 +266,8 @@ func (s *STTClient) TranscribeWithConfidence(audioData []float32, sampleRate int
 	}
 
 	// Add optional parameters
-	_ = writer.WriteField("model", "tiny") // Use the model loaded in STT service
-	_ = writer.WriteField("language", s.language)  // Use configured language
+	_ = writer.WriteField("model", "tiny")        // Use the model loaded in STT service
+	_ = writer.WriteField("language", s.language) // Use configured language
 	_ = writer.WriteField("temperature", "0.0")
 	_ = writer.WriteField("response_format", "json")
 

@@ -94,12 +94,12 @@ func (m *MockTTSClient) Close() error {
 
 // MockStreamingPredictiveBridge for testing
 type MockStreamingPredictiveBridge struct {
-	shouldError     bool
-	shouldFallback  bool
-	responseText    string
-	intent          string
-	confidence      float64
-	responseType    llm.PredictiveType
+	shouldError    bool
+	shouldFallback bool
+	responseText   string
+	intent         string
+	confidence     float64
+	responseType   llm.PredictiveType
 }
 
 func (m *MockStreamingPredictiveBridge) ProcessVoiceCommand(ctx context.Context, transcript string) (*llm.BridgeSession, error) {
@@ -121,9 +121,9 @@ func (m *MockStreamingPredictiveBridge) ProcessVoiceCommand(ctx context.Context,
 			ResponseType: m.responseType,
 		},
 		PredictiveResponse: &llm.PredictiveResponse{
-			ImmediateAck:    m.responseText,
-			ExecutionPlan:   "Test execution plan",
-			StatusUpdates:   make(chan llm.StatusUpdate, 1),
+			ImmediateAck:  m.responseText,
+			ExecutionPlan: "Test execution plan",
+			StatusUpdates: make(chan llm.StatusUpdate, 1),
 		},
 		StartTime: time.Now(),
 	}, nil

@@ -34,9 +34,9 @@ import (
 	"github.com/loqalabs/loqa-hub/internal/llm"
 	"github.com/loqalabs/loqa-hub/internal/logging"
 	"github.com/loqalabs/loqa-hub/internal/messaging"
+	"github.com/loqalabs/loqa-hub/internal/skills"
 	"github.com/loqalabs/loqa-hub/internal/storage"
 	pb "github.com/loqalabs/loqa-proto/go/audio"
-	"github.com/loqalabs/loqa-hub/internal/skills"
 	"go.uber.org/zap"
 )
 
@@ -886,8 +886,8 @@ func (as *AudioService) isRelayActive(relayID string) bool {
 	}
 
 	isActive := relay.Status == RelayStatusWinner ||
-		        relay.Status == RelayStatusConnected ||
-		        relay.Status == RelayStatusContending
+		relay.Status == RelayStatusConnected ||
+		relay.Status == RelayStatusContending
 
 	// Debug logging to understand status
 	statusName := "unknown"

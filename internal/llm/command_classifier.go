@@ -348,7 +348,7 @@ func (cc *CommandClassifier) determineResponseType(confidence, reliability float
 }
 
 // determineUpdateStrategy decides when and how to send follow-up messages
-func (cc *CommandClassifier) determineUpdateStrategy(responseType PredictiveType, category IntentCategory, _ OperationType, executionTime time.Duration) UpdateStrategy {
+func (cc *CommandClassifier) determineUpdateStrategy(responseType PredictiveType, category IntentCategory, _ OperationType, _ time.Duration) UpdateStrategy {
 	switch responseType {
 	case PredictiveOptimistic:
 		// Reliable operations - only report failures

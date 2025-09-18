@@ -156,10 +156,7 @@ func NewPredictiveResponseEngine(skillManager SkillManagerInterface) *Predictive
 // ProcessCommand handles immediate acknowledgment and async execution
 func (pre *PredictiveResponseEngine) ProcessCommand(ctx context.Context, transcript string) (*PredictiveResponse, error) {
 	// 1. Classify command and determine response strategy
-	classification, err := pre.classifyCommand(ctx, transcript)
-	if err != nil {
-		return nil, fmt.Errorf("command classification failed: %w", err)
-	}
+	classification := pre.classifyCommand(ctx, transcript)
 
 	// 2. Generate immediate acknowledgment based on classification
 	response := pre.generatePredictiveResponse(classification)
@@ -171,7 +168,7 @@ func (pre *PredictiveResponseEngine) ProcessCommand(ctx context.Context, transcr
 }
 
 // classifyCommand analyzes command characteristics for predictive handling
-func (pre *PredictiveResponseEngine) classifyCommand(ctx context.Context, transcript string) (*CommandClassification, error) {
+func (pre *PredictiveResponseEngine) classifyCommand(_ context.Context, _ string) *CommandClassification {
 	// Use existing command parser for intent extraction
 	// Then enhance with device reliability and execution time prediction
 
@@ -186,7 +183,7 @@ func (pre *PredictiveResponseEngine) classifyCommand(ctx context.Context, transc
 		ExecutionTime:     2 * time.Second,
 		ResponseType:      PredictiveOptimistic,
 		UpdateStrategy:    UpdateVerbose, // Use verbose for testing to ensure status updates are sent
-	}, nil
+	}
 }
 
 // generatePredictiveResponse creates immediate acknowledgment based on classification

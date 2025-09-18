@@ -330,10 +330,10 @@ func TestRequestScopedArbitrationLifecycle(t *testing.T) {
 	// Simulate first request: create arbitration window and make relay winner
 	stream := &MockStream{}
 	as.activeStreams[relayID] = &RelayStream{
-		Stream:    stream,
-		RelayID:   relayID,
-		Status:    RelayStatusConnected,
-		ConnectedAt: time.Now(),
+		Stream:        stream,
+		RelayID:       relayID,
+		Status:        RelayStatusConnected,
+		ConnectedAt:   time.Now(),
 		CancelChannel: make(chan struct{}),
 	}
 

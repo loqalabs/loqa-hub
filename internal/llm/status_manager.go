@@ -261,7 +261,7 @@ func (sm *StatusManager) handleErrorPattern(statusCtx *StatusContext, update *St
 // categorizeError classifies errors into categories for pattern detection
 func (sm *StatusManager) categorizeError(errorMsg string) string {
 	if errorMsg == "" {
-		return "unknown"
+		return HealthStatusUnknown
 	}
 
 	errorLower := strings.ToLower(errorMsg)
@@ -283,7 +283,7 @@ func (sm *StatusManager) categorizeError(errorMsg string) string {
 }
 
 // attemptErrorRecovery tries automated recovery for recurring errors
-func (sm *StatusManager) attemptErrorRecovery(statusCtx *StatusContext, pattern *ErrorPattern, update *StatusUpdate) {
+func (sm *StatusManager) attemptErrorRecovery(statusCtx *StatusContext, pattern *ErrorPattern, _ *StatusUpdate) {
 	log.Printf("🔧 Attempting error recovery for pattern %s_%s (occurrence #%d)",
 		pattern.DeviceID, pattern.ErrorType, pattern.OccurrenceCount)
 
@@ -354,11 +354,11 @@ func (sm *StatusManager) attemptErrorRecovery(statusCtx *StatusContext, pattern 
 		recoveryUpdate.Message = fmt.Sprintf("Could not recover from %s issue automatically", pattern.ErrorType)
 	}
 
-	sm.sendUpdate(statusCtx, &recoveryUpdate)
+	_ = sm.sendUpdate(statusCtx, &recoveryUpdate)
 }
 
 // executeRecoveryAction performs the actual recovery operation
-func (sm *StatusManager) executeRecoveryAction(statusCtx *StatusContext, action *RecoveryAction) bool {
+func (sm *StatusManager) executeRecoveryAction(_ *StatusContext, action *RecoveryAction) bool {
 	switch action.Type {
 	case RecoveryRetry:
 		// Signal retry to execution pipeline

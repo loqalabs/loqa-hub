@@ -38,11 +38,11 @@ import (
 
 // MockSTTServer simulates an OpenAI-compatible STT service
 type MockSTTServer struct {
-	server     *httptest.Server
-	mu         sync.RWMutex
-	responses  map[string]string
-	callCount  int
-	lastAudio  []byte
+	server    *httptest.Server
+	mu        sync.RWMutex
+	responses map[string]string
+	callCount int
+	lastAudio []byte
 }
 
 func NewMockSTTServer() *MockSTTServer {
@@ -104,7 +104,7 @@ func (m *MockSTTServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{
-		"status": "healthy",
+		"status":  "healthy",
 		"service": "mock-stt",
 	})
 }
@@ -194,7 +194,7 @@ func (m *MockTTSServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{
-		"status": "healthy",
+		"status":  "healthy",
 		"service": "mock-tts",
 	})
 }
@@ -205,13 +205,13 @@ func (m *MockTTSServer) handleVoices(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"data": []map[string]string{
 			{
-				"id": "af_bella",
-				"name": "Bella",
+				"id":          "af_bella",
+				"name":        "Bella",
 				"preview_url": "https://api.openai.com/v1/audio/speech/preview/af_bella",
 			},
 			{
-				"id": "af_sarah",
-				"name": "Sarah",
+				"id":          "af_sarah",
+				"name":        "Sarah",
 				"preview_url": "https://api.openai.com/v1/audio/speech/preview/af_sarah",
 			},
 		},
@@ -258,12 +258,12 @@ func generateMockWAVData(sampleRate int, durationSeconds int) []byte {
 		// fmt subchunk
 		0x66, 0x6D, 0x74, 0x20, // "fmt "
 		0x10, 0x00, 0x00, 0x00, // Subchunk size (16)
-		0x01, 0x00,             // Audio format (PCM)
-		0x01, 0x00,             // Number of channels (1)
+		0x01, 0x00, // Audio format (PCM)
+		0x01, 0x00, // Number of channels (1)
 		0x22, 0x56, 0x00, 0x00, // Sample rate (22050)
 		0x44, 0xAC, 0x00, 0x00, // Byte rate
-		0x02, 0x00,             // Block align
-		0x10, 0x00,             // Bits per sample (16)
+		0x02, 0x00, // Block align
+		0x10, 0x00, // Bits per sample (16)
 
 		// data subchunk
 		0x64, 0x61, 0x74, 0x61, // "data"
@@ -297,9 +297,9 @@ func generateMockWAVData(sampleRate int, durationSeconds int) []byte {
 
 // MockNATSServer simulates NATS message delivery
 type MockNATSServer struct {
-	mu        sync.RWMutex
-	messages  map[string][]messaging.AudioStreamMessage
-	relayID   string
+	mu       sync.RWMutex
+	messages map[string][]messaging.AudioStreamMessage
+	relayID  string
 }
 
 func NewMockNATSServer() *MockNATSServer {
@@ -381,13 +381,13 @@ func TestE2EAudioPipeline(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		inputAudio     []byte
-		expectedText   string
-		expectedAudio  bool
-		relayID        string
-		messageType    string
-		priority       int
+		name          string
+		inputAudio    []byte
+		expectedText  string
+		expectedAudio bool
+		relayID       string
+		messageType   string
+		priority      int
 	}{
 		{
 			name:          "basic_voice_command",

@@ -31,12 +31,12 @@ import (
 
 // AudioStreamMessage represents complete audio file for NATS delivery
 type AudioStreamMessage struct {
-	StreamID     string `json:"stream_id"`      // Unique identifier for this audio stream
-	AudioData    []byte `json:"audio_data"`     // Complete audio file data
-	AudioFormat  string `json:"audio_format"`   // Format (e.g., "wav", "mp3")
-	SampleRate   int    `json:"sample_rate"`    // Sample rate for audio data
-	MessageType  string `json:"message_type"`   // "response", "timer", "reminder", "system"
-	Priority     int    `json:"priority"`       // 1=highest, 5=lowest
+	StreamID    string `json:"stream_id"`    // Unique identifier for this audio stream
+	AudioData   []byte `json:"audio_data"`   // Complete audio file data
+	AudioFormat string `json:"audio_format"` // Format (e.g., "wav", "mp3")
+	SampleRate  int    `json:"sample_rate"`  // Sample rate for audio data
+	MessageType string `json:"message_type"` // "response", "timer", "reminder", "system"
+	Priority    int    `json:"priority"`     // 1=highest, 5=lowest
 }
 
 // AudioStreamPublisher handles publishing chunked audio streams via NATS
