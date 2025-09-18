@@ -92,10 +92,8 @@ func TestCalculateSignalStrength(t *testing.T) {
 }
 
 func TestArbitrationWindow(t *testing.T) {
-	as := &AudioService{
-		activeStreams:             make(map[string]*RelayStream),
-		arbitrationWindowDuration: 100 * time.Millisecond, // Short window for testing
-	}
+	as := createTestAudioService(t)
+	as.arbitrationWindowDuration = 100 * time.Millisecond // Short window for testing
 
 	// Test starting arbitration window
 	stream1 := &MockStream{}
@@ -165,10 +163,8 @@ func TestArbitrationWindow(t *testing.T) {
 }
 
 func TestJoinArbitrationWindowAfterTimeout(t *testing.T) {
-	as := &AudioService{
-		activeStreams:             make(map[string]*RelayStream),
-		arbitrationWindowDuration: 50 * time.Millisecond, // Very short window
-	}
+	as := createTestAudioService(t)
+	as.arbitrationWindowDuration = 50 * time.Millisecond // Very short window
 
 	// Start arbitration window
 	stream1 := &MockStream{}
@@ -228,10 +224,8 @@ func TestRelayStatusChecking(t *testing.T) {
 }
 
 func TestSignalStrengthArbitration(t *testing.T) {
-	as := &AudioService{
-		activeStreams:             make(map[string]*RelayStream),
-		arbitrationWindowDuration: 100 * time.Millisecond,
-	}
+	as := createTestAudioService(t)
+	as.arbitrationWindowDuration = 100 * time.Millisecond
 
 	// Create window with relays having different signal strengths
 	window := &ArbitrationWindow{
@@ -328,10 +322,8 @@ func TestCleanupRelay(t *testing.T) {
 func TestRequestScopedArbitrationLifecycle(t *testing.T) {
 	const testRelayID = "test-relay-001"
 
-	as := &AudioService{
-		activeStreams:             make(map[string]*RelayStream),
-		arbitrationWindowDuration: 100 * time.Millisecond,
-	}
+	as := createTestAudioService(t)
+	as.arbitrationWindowDuration = 100 * time.Millisecond
 
 	relayID := testRelayID
 
@@ -403,10 +395,8 @@ func TestRequestScopedArbitrationLifecycle(t *testing.T) {
 func TestConsecutiveRequestsWithSingleRelay(t *testing.T) {
 	const testRelayID = "test-relay-001"
 
-	as := &AudioService{
-		activeStreams:             make(map[string]*RelayStream),
-		arbitrationWindowDuration: 50 * time.Millisecond,
-	}
+	as := createTestAudioService(t)
+	as.arbitrationWindowDuration = 50 * time.Millisecond
 
 	relayID := testRelayID
 	stream := &MockStream{}
@@ -470,10 +460,8 @@ func TestConsecutiveRequestsWithSingleRelay(t *testing.T) {
 
 // TestRelayStatusTransitions tests the relay status lifecycle through multiple states
 func TestRelayStatusTransitions(t *testing.T) {
-	as := &AudioService{
-		activeStreams:             make(map[string]*RelayStream),
-		arbitrationWindowDuration: 100 * time.Millisecond,
-	}
+	as := createTestAudioService(t)
+	as.arbitrationWindowDuration = 100 * time.Millisecond
 
 	relayID := "test-relay-001"
 
@@ -529,10 +517,8 @@ func TestRelayStatusTransitions(t *testing.T) {
 func TestArbitrationWindowClearance(t *testing.T) {
 	const testRelayID = "test-relay-001"
 
-	as := &AudioService{
-		activeStreams:             make(map[string]*RelayStream),
-		arbitrationWindowDuration: 100 * time.Millisecond,
-	}
+	as := createTestAudioService(t)
+	as.arbitrationWindowDuration = 100 * time.Millisecond
 
 	relayID := testRelayID
 	stream := &MockStream{}
