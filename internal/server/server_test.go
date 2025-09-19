@@ -5,15 +5,21 @@ import (
 	"time"
 
 	"github.com/loqalabs/loqa-hub/internal/config"
+	"github.com/loqalabs/loqa-hub/internal/logging"
 )
 
-func TestNew_WithGlobalConfig(t *testing.T) {
-	// Create a test configuration
+func TestNew_WithHTTPStreamingConfig(t *testing.T) {
+	// Initialize logging for test
+	if err := logging.Initialize(); err != nil {
+		t.Fatalf("Failed to initialize logging: %v", err)
+	}
+	defer logging.Close()
+
+	// Create a test configuration for new HTTP/1.1 streaming architecture
 	cfg := &config.Config{
 		Server: config.ServerConfig{
 			Host:         "0.0.0.0",
-			Port:         8080,
-			GRPCPort:     50051,
+			Port:         3000,
 			DBPath:       ":memory:", // Use in-memory SQLite for testing
 			ReadTimeout:  15 * time.Second,
 			WriteTimeout: 15 * time.Second,
@@ -32,6 +38,24 @@ func TestNew_WithGlobalConfig(t *testing.T) {
 			MaxConcurrent:   10,
 			Timeout:         10 * time.Second,
 			FallbackEnabled: true,
+		},
+		Streaming: config.StreamingConfig{
+			Enabled:             false, // Disabled for testing
+			OllamaURL:           "http://localhost:11434",
+			Model:               "llama3.2:3b",
+			MaxBufferTime:       2 * time.Second,
+			MaxTokensPerPhrase:  50,
+			AudioConcurrency:    3,
+			VisualFeedbackDelay: 50 * time.Millisecond,
+			InterruptTimeout:    500 * time.Millisecond,
+			FallbackEnabled:     true,
+			MetricsEnabled:      false, // Disabled for testing
+		},
+		NATS: config.NATSConfig{
+			URL:           "nats://localhost:4222",
+			Subject:       "loqa.test",
+			MaxReconnect:  10,
+			ReconnectWait: 2 * time.Second,
 		},
 	}
 
@@ -52,8 +76,20 @@ func TestNew_WithGlobalConfig(t *testing.T) {
 		t.Error("Server mux not initialized")
 	}
 
-	if server.grpcServer == nil {
-		t.Error("Server gRPC server not initialized")
+	if server.streamTransport == nil {
+		t.Error("Server HTTP streaming transport not initialized")
+	}
+
+	if server.arbitrator == nil {
+		t.Error("Server arbitrator not initialized")
+	}
+
+	if server.intentProcessor == nil {
+		t.Error("Server intent processor not initialized")
+	}
+
+	if server.tierDetector == nil {
+		t.Error("Server tier detector not initialized")
 	}
 
 	if server.database == nil {
@@ -102,11 +138,15 @@ func TestNew_STTLanguageConfiguration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Initialize logging for test
+			if err := logging.Initialize(); err != nil {
+				t.Fatalf("Failed to initialize logging: %v", err)
+			}
+			defer logging.Close()
 			cfg := &config.Config{
 				Server: config.ServerConfig{
 					Host:         "0.0.0.0",
-					Port:         8080,
-					GRPCPort:     50051,
+					Port:         3000,
 					DBPath:       ":memory:",
 					ReadTimeout:  15 * time.Second,
 					WriteTimeout: 15 * time.Second,

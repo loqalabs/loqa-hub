@@ -19,11 +19,8 @@ func TestLoad_DefaultValues(t *testing.T) {
 	if cfg.Server.Host != "0.0.0.0" {
 		t.Errorf("Server.Host = %q, want %q", cfg.Server.Host, "0.0.0.0")
 	}
-	if cfg.Server.Port != 8080 {
-		t.Errorf("Server.Port = %d, want %d", cfg.Server.Port, 8080)
-	}
-	if cfg.Server.GRPCPort != 50051 {
-		t.Errorf("Server.GRPCPort = %d, want %d", cfg.Server.GRPCPort, 50051)
+	if cfg.Server.Port != 3000 {
+		t.Errorf("Server.Port = %d, want %d", cfg.Server.Port, 3000)
 	}
 	if cfg.Server.DBPath != "./data/loqa-hub.db" {
 		t.Errorf("Server.DBPath = %q, want %q", cfg.Server.DBPath, "./data/loqa-hub.db")
@@ -78,7 +75,6 @@ func TestLoad_EnvironmentVariables(t *testing.T) {
 			envVars: map[string]string{
 				"LOQA_HOST":      "127.0.0.1",
 				"LOQA_PORT":      "3000",
-				"LOQA_GRPC_PORT": "50052",
 				"LOQA_DB_PATH":   "/custom/path/db.sqlite",
 			},
 			validate: func(t *testing.T, cfg *Config) {
@@ -87,9 +83,6 @@ func TestLoad_EnvironmentVariables(t *testing.T) {
 				}
 				if cfg.Server.Port != 3000 {
 					t.Errorf("Server.Port = %d, want %d", cfg.Server.Port, 3000)
-				}
-				if cfg.Server.GRPCPort != 50052 {
-					t.Errorf("Server.GRPCPort = %d, want %d", cfg.Server.GRPCPort, 50052)
 				}
 				if cfg.Server.DBPath != "/custom/path/db.sqlite" {
 					t.Errorf("Server.DBPath = %q, want %q", cfg.Server.DBPath, "/custom/path/db.sqlite")
@@ -183,14 +176,6 @@ func TestLoad_InvalidConfiguration(t *testing.T) {
 			errorContains: "invalid server port",
 		},
 		{
-			name: "Invalid gRPC port",
-			envVars: map[string]string{
-				"LOQA_GRPC_PORT": "99999",
-			},
-			expectError:   true,
-			errorContains: "invalid gRPC port",
-		},
-		{
 			name: "Valid configuration",
 			envVars: map[string]string{
 				"STT_LANGUAGE": "en",
@@ -277,7 +262,7 @@ func TestSTTLanguageConfigurationBackwardsCompatibility(t *testing.T) {
 // Helper function to clear environment variables used in tests
 func clearEnvVars() {
 	envVars := []string{
-		"LOQA_HOST", "LOQA_PORT", "LOQA_GRPC_PORT", "LOQA_DB_PATH",
+		"LOQA_HOST", "LOQA_PORT", "LOQA_DB_PATH",
 		"LOQA_READ_TIMEOUT", "LOQA_WRITE_TIMEOUT",
 		"STT_URL", "STT_LANGUAGE", "STT_TEMPERATURE", "STT_MAX_TOKENS",
 		"TTS_URL", "TTS_VOICE", "TTS_SPEED", "TTS_FORMAT", "TTS_NORMALIZE",
