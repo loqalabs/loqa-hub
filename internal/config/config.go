@@ -40,7 +40,6 @@ type Config struct {
 type ServerConfig struct {
 	Host         string
 	Port         int
-	GRPCPort     int
 	DBPath       string
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
@@ -114,8 +113,7 @@ func Load() (*Config, error) {
 	config := &Config{
 		Server: ServerConfig{
 			Host:         getEnvString("LOQA_HOST", "0.0.0.0"),
-			Port:         getEnvInt("LOQA_PORT", 8080),
-			GRPCPort:     getEnvInt("LOQA_GRPC_PORT", 50051),
+			Port:         getEnvInt("LOQA_PORT", 3000),
 			DBPath:       getEnvString("LOQA_DB_PATH", "./data/loqa-hub.db"),
 			ReadTimeout:  getEnvDuration("LOQA_READ_TIMEOUT", 30*time.Second),
 			WriteTimeout: getEnvDuration("LOQA_WRITE_TIMEOUT", 30*time.Second),
@@ -177,10 +175,6 @@ func Load() (*Config, error) {
 func (c *Config) validate() error {
 	if c.Server.Port <= 0 || c.Server.Port > 65535 {
 		return fmt.Errorf("invalid server port: %d", c.Server.Port)
-	}
-
-	if c.Server.GRPCPort <= 0 || c.Server.GRPCPort > 65535 {
-		return fmt.Errorf("invalid gRPC port: %d", c.Server.GRPCPort)
 	}
 
 	if c.STT.URL == "" {
