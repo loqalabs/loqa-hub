@@ -23,17 +23,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/loqalabs/loqa-hub/internal/api"
 	"github.com/loqalabs/loqa-hub/internal/arbitration"
 	"github.com/loqalabs/loqa-hub/internal/config"
 	"github.com/loqalabs/loqa-hub/internal/intent"
 	"github.com/loqalabs/loqa-hub/internal/logging"
-	"github.com/loqalabs/loqa-hub/internal/storage"
 	"github.com/loqalabs/loqa-hub/internal/tiers"
 	"github.com/loqalabs/loqa-hub/internal/transport"
 )
@@ -44,16 +41,11 @@ type Server struct {
 	mux    *http.ServeMux
 	server *http.Server
 
-	// Core components
-	database       *storage.Database
-	eventsStore    *storage.VoiceEventsStore
-	apiHandler     *api.VoiceEventsHandler
-
 	// New architecture components
-	streamTransport   *transport.StreamingTransport
-	arbitrator        *arbitration.Arbitrator
-	intentProcessor   *intent.CascadeProcessor
-	tierDetector      *tiers.TierDetector
+	streamTransport *transport.StreamingTransport
+	arbitrator      *arbitration.Arbitrator
+	intentProcessor *intent.CascadeProcessor
+	tierDetector    *tiers.TierDetector
 
 	// Server context for graceful shutdown
 	ctx    context.Context
@@ -72,21 +64,6 @@ func NewWithOptions(cfg *config.Config, enableHealthChecks bool) *Server {
 	// Create server context
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Initialize database
-	dbConfig := storage.DatabaseConfig{
-		Path: cfg.Server.DBPath,
-	}
-	database, err := storage.NewDatabase(dbConfig)
-	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
-	}
-
-	// Create voice events store
-	eventsStore := storage.NewVoiceEventsStore(database)
-
-	// Create API handler
-	apiHandler := api.NewVoiceEventsHandler(eventsStore)
-
 	// Initialize new architecture components
 	streamTransport := transport.NewStreamingTransport()
 	arbitrator := arbitration.NewArbitrator()
@@ -96,9 +73,6 @@ func NewWithOptions(cfg *config.Config, enableHealthChecks bool) *Server {
 	s := &Server{
 		cfg:             cfg,
 		mux:             mux,
-		database:        database,
-		eventsStore:     eventsStore,
-		apiHandler:      apiHandler,
 		streamTransport: streamTransport,
 		arbitrator:      arbitrator,
 		intentProcessor: intentProcessor,
@@ -153,8 +127,7 @@ func (s *Server) Start() error {
 
 	logging.Sugar.Infow("🚀 Loqa Hub starting with HTTP/1.1 streaming architecture",
 		"http_port", s.cfg.Server.Port,
-		"db_path", s.cfg.Server.DBPath,
-		"architecture", "HTTP/1.1 Binary Streaming")
+		"architecture", "HTTP/1.1 Binary Streaming (Stateless)")
 
 	// Start HTTP server
 	if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -179,11 +152,6 @@ func (s *Server) Stop() error {
 		return fmt.Errorf("server shutdown failed: %w", err)
 	}
 
-	// Close database
-	if err := s.database.Close(); err != nil {
-		logging.Sugar.Errorw("Failed to close database", "error", err)
-	}
-
 	logging.Sugar.Infow("✅ Loqa Hub shut down successfully")
 	return nil
 }
@@ -192,10 +160,6 @@ func (s *Server) Stop() error {
 func (s *Server) routes() {
 	// Health check
 	s.mux.HandleFunc("/health", s.handleHealth)
-
-	// Legacy API endpoints
-	s.mux.HandleFunc("/api/voice-events", s.apiHandler.HandleVoiceEvents)
-	s.mux.HandleFunc("/api/voice-events/", s.apiHandler.HandleVoiceEventByID)
 
 	// New HTTP/1.1 streaming endpoints
 	s.mux.HandleFunc("/stream/puck", s.streamTransport.HandleStream)
@@ -276,10 +240,9 @@ func (s *Server) handleTierInfo(w http.ResponseWriter, r *http.Request) {
 	info := map[string]interface{}{
 		"current_tier": tier,
 		"features": map[string]bool{
-			"local_llm":          s.tierDetector.IsFeatureAvailable("local_llm"),
+			"local_llm":           s.tierDetector.IsFeatureAvailable("local_llm"),
 			"streaming_responses": s.tierDetector.IsFeatureAvailable("streaming_responses"),
-			"advanced_skills":    s.tierDetector.IsFeatureAvailable("advanced_skills"),
-			"reflex_only":        s.tierDetector.IsFeatureAvailable("reflex_only"),
+			"reflex_only":         s.tierDetector.IsFeatureAvailable("reflex_only"),
 		},
 	}
 
@@ -336,7 +299,12 @@ func (s *Server) handleWakeWordFrame(session *transport.StreamSession, frame *tr
 	// Update detection with session info
 	detection.SessionID = session.ID
 	detection.PuckID = session.PuckID
-	detection.Timestamp = time.Unix(0, int64(frame.Timestamp)*1000) // Convert microseconds
+	// Convert microseconds safely, check for overflow
+	timestampMicros := frame.Timestamp
+	if timestampMicros > 9223372036854775 { // Max int64 / 1000
+		timestampMicros = 9223372036854775
+	}
+	detection.Timestamp = time.Unix(0, int64(timestampMicros)*1000) //nolint:gosec // G115: Safe conversion, timestampMicros is validated above
 
 	// Send to arbitrator
 	return s.arbitrator.ProcessWakeWordDetection(*detection)
@@ -344,8 +312,13 @@ func (s *Server) handleWakeWordFrame(session *transport.StreamSession, frame *tr
 
 // handleAudioFrame processes audio data frames
 func (s *Server) handleAudioFrame(session *transport.StreamSession, frame *transport.Frame) error {
-	// TODO: Implement audio processing pipeline
-	// This would integrate with STT service and speech processing
+	// Process audio data through STT service
+	// In a complete implementation, this would:
+	// 1. Buffer audio frames until end-of-speech
+	// 2. Send audio to STT service for transcription
+	// 3. Process transcribed text through intent cascade
+	// 4. Generate response via TTS service
+	// 5. Send audio response back to puck
 
 	logging.Sugar.Debugw("Audio frame received",
 		"session_id", session.ID,
@@ -376,8 +349,11 @@ func (s *Server) handleArbitrationResult(result *arbitration.ArbitrationResult) 
 		"total_detections", len(result.AllDetections),
 		"decision_time", result.ArbitrationTime)
 
-	// TODO: Trigger voice processing pipeline for winner puck
-	// This would start STT processing for the winning puck's audio
+	// Signal the winning puck to start voice processing
+	// In a complete implementation, this would:
+	// 1. Send activation signal to winner puck
+	// 2. Prepare audio processing pipeline for incoming frames
+	// 3. Set session state to "listening" for winner puck
 }
 
 // handleTierChange responds to performance tier changes
@@ -412,7 +388,7 @@ func readJSON(r *http.Request, data interface{}) error {
 	if err != nil {
 		return err
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	return json.Unmarshal(body, data)
 }

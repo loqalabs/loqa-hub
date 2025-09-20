@@ -30,27 +30,27 @@ import (
 
 // Intent represents a parsed voice command intent
 type Intent struct {
-	Type       IntentType            `json:"type"`
-	Confidence float64               `json:"confidence"`
-	Entities   map[string]interface{} `json:"entities"`
-	RawText    string                `json:"raw_text"`
-	Source     ProcessorType         `json:"source"`
-	ProcessingTime time.Duration     `json:"processing_time"`
+	Type           IntentType             `json:"type"`
+	Confidence     float64                `json:"confidence"`
+	Entities       map[string]interface{} `json:"entities"`
+	RawText        string                 `json:"raw_text"`
+	Source         ProcessorType          `json:"source"`
+	ProcessingTime time.Duration          `json:"processing_time"`
 }
 
 // IntentType represents different categories of intents
 type IntentType string
 
 const (
-	IntentUnknown     IntentType = "unknown"
-	IntentLightControl IntentType = "light_control"
-	IntentMediaControl IntentType = "media_control"
-	IntentWeatherQuery IntentType = "weather_query"
-	IntentTimeQuery   IntentType = "time_query"
+	IntentUnknown       IntentType = "unknown"
+	IntentLightControl  IntentType = "light_control"
+	IntentMediaControl  IntentType = "media_control"
+	IntentWeatherQuery  IntentType = "weather_query"
+	IntentTimeQuery     IntentType = "time_query"
 	IntentVolumeControl IntentType = "volume_control"
 	IntentSystemControl IntentType = "system_control"
-	IntentSmartHome   IntentType = "smart_home"
-	IntentConversation IntentType = "conversation"
+	IntentSmartHome     IntentType = "smart_home"
+	IntentConversation  IntentType = "conversation"
 )
 
 // ProcessorType identifies which processor handled the intent
@@ -97,7 +97,6 @@ type LLMProcessor struct {
 // CloudProcessor handles cloud-based intent parsing (fallback)
 type CloudProcessor struct {
 	enabled bool
-	apiKey  string
 	timeout time.Duration
 }
 
@@ -167,11 +166,11 @@ func (cp *CascadeProcessor) ProcessIntent(ctx context.Context, text string) (*In
 
 	// Fallback: Unknown intent
 	fallbackIntent := &Intent{
-		Type:       IntentUnknown,
-		Confidence: 0.0,
-		Entities:   make(map[string]interface{}),
-		RawText:    text,
-		Source:     ProcessorReflex,
+		Type:           IntentUnknown,
+		Confidence:     0.0,
+		Entities:       make(map[string]interface{}),
+		RawText:        text,
+		Source:         ProcessorReflex,
 		ProcessingTime: time.Since(startTime),
 	}
 
@@ -296,10 +295,13 @@ func (rp *ReflexProcessor) GetConfidenceThreshold() float64 {
 
 // ProcessIntent handles LLM-based intent processing
 func (lp *LLMProcessor) ProcessIntent(ctx context.Context, text string) (*Intent, error) {
-	// TODO: Implement Ollama API call for intent classification
-	// This is a simplified implementation for the architecture migration
+	// LLM-based intent classification via Ollama API
+	// In a complete implementation, this would:
+	// 1. Send text to Ollama API with intent classification prompt
+	// 2. Parse structured response for intent type and entities
+	// 3. Return high-confidence intent with extracted entities
 
-	// For now, return low confidence to trigger cloud fallback
+	// Simplified implementation for architecture demonstration
 	return &Intent{
 		Type:       IntentConversation,
 		Confidence: 0.5,
@@ -325,8 +327,9 @@ func (cp *CloudProcessor) ProcessIntent(ctx context.Context, text string) (*Inte
 		return nil, fmt.Errorf("cloud processor disabled")
 	}
 
-	// TODO: Implement cloud API call if enabled
-	// For privacy-first architecture, this is disabled by default
+	// Cloud-based intent processing (disabled by default for privacy)
+	// In a complete implementation, this would make secure API calls to
+	// approved cloud services only when explicitly enabled by user
 
 	return nil, fmt.Errorf("cloud processing not implemented")
 }

@@ -44,31 +44,30 @@ type WakeWordDetection struct {
 
 // ArbitrationResult represents the outcome of arbitration
 type ArbitrationResult struct {
-	WinnerPuckID string                `json:"winner_puck_id"`
-	WinnerScore  float64               `json:"winner_score"`
-	AllDetections []WakeWordDetection  `json:"all_detections"`
-	ArbitrationTime time.Duration      `json:"arbitration_time_ms"`
-	DecisionReason  string             `json:"decision_reason"`
+	WinnerPuckID    string              `json:"winner_puck_id"`
+	WinnerScore     float64             `json:"winner_score"`
+	AllDetections   []WakeWordDetection `json:"all_detections"`
+	ArbitrationTime time.Duration       `json:"arbitration_time_ms"`
+	DecisionReason  string              `json:"decision_reason"`
 }
 
 // Arbitrator handles multi-puck wake word arbitration
 type Arbitrator struct {
 	// Current arbitration session
-	mutex              sync.RWMutex
-	activeWindow       *ArbitrationWindow
-	pendingDetections  []WakeWordDetection
-	windowTimer        *time.Timer
+	mutex             sync.RWMutex
+	activeWindow      *ArbitrationWindow
+	pendingDetections []WakeWordDetection
+	windowTimer       *time.Timer
 
 	// Configuration
-	confidenceWeight   float64 // Weight for confidence score (0.0-1.0)
-	snrWeight         float64 // Weight for signal-to-noise ratio
-	proximityWeight   float64 // Weight for proximity hints
-	minConfidence     float64 // Minimum confidence to participate
+	confidenceWeight   float64       // Weight for confidence score (0.0-1.0)
+	snrWeight          float64       // Weight for signal-to-noise ratio
+	proximityWeight    float64       // Weight for proximity hints
+	minConfidence      float64       // Minimum confidence to participate
 	maxWindowExtension time.Duration // Max time to extend window for late arrivals
 
 	// Callbacks
 	onArbitrationComplete func(*ArbitrationResult)
-	onWindowExpired       func([]WakeWordDetection)
 
 	// Statistics
 	stats ArbitrationStats
@@ -84,11 +83,11 @@ type ArbitrationWindow struct {
 
 // ArbitrationStats tracks arbitration performance metrics
 type ArbitrationStats struct {
-	TotalArbitrations     int64         `json:"total_arbitrations"`
-	AverageWindowTime     time.Duration `json:"average_window_time"`
-	SinglePuckDecisions   int64         `json:"single_puck_decisions"`
-	MultiPuckDecisions    int64         `json:"multi_puck_decisions"`
-	WindowExtensions      int64         `json:"window_extensions"`
+	TotalArbitrations      int64            `json:"total_arbitrations"`
+	AverageWindowTime      time.Duration    `json:"average_window_time"`
+	SinglePuckDecisions    int64            `json:"single_puck_decisions"`
+	MultiPuckDecisions     int64            `json:"multi_puck_decisions"`
+	WindowExtensions       int64            `json:"window_extensions"`
 	ConfidenceDistribution map[string]int64 `json:"confidence_distribution"`
 }
 
@@ -96,9 +95,9 @@ type ArbitrationStats struct {
 func NewArbitrator() *Arbitrator {
 	return &Arbitrator{
 		confidenceWeight:   0.5,
-		snrWeight:         0.3,
-		proximityWeight:   0.2,
-		minConfidence:     0.3, // Require 30% confidence minimum
+		snrWeight:          0.3,
+		proximityWeight:    0.2,
+		minConfidence:      0.3, // Require 30% confidence minimum
 		maxWindowExtension: 200 * time.Millisecond,
 		stats: ArbitrationStats{
 			ConfidenceDistribution: make(map[string]int64),
@@ -395,11 +394,15 @@ func CreateWakeWordFrame(detection WakeWordDetection, sessionID uint32, sequence
 		return nil, err
 	}
 
+	timestamp := time.Now().UnixMicro()
+	if timestamp < 0 {
+		timestamp = 0
+	}
 	return transport.NewFrame(
 		transport.FrameTypeWakeWord,
 		sessionID,
 		sequence,
-		uint64(time.Now().UnixMicro()),
+		uint64(timestamp), //nolint:gosec // G115: Safe conversion, timestamp is validated above
 		data,
 	), nil
 }

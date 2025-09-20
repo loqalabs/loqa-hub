@@ -20,7 +20,6 @@ func TestNew_WithHTTPStreamingConfig(t *testing.T) {
 		Server: config.ServerConfig{
 			Host:         "0.0.0.0",
 			Port:         3000,
-			DBPath:       ":memory:", // Use in-memory SQLite for testing
 			ReadTimeout:  15 * time.Second,
 			WriteTimeout: 15 * time.Second,
 		},
@@ -92,18 +91,6 @@ func TestNew_WithHTTPStreamingConfig(t *testing.T) {
 		t.Error("Server tier detector not initialized")
 	}
 
-	if server.database == nil {
-		t.Error("Server database not initialized")
-	}
-
-	if server.eventsStore == nil {
-		t.Error("Server events store not initialized")
-	}
-
-	if server.apiHandler == nil {
-		t.Error("Server API handler not initialized")
-	}
-
 	// Note: audioService may be nil if STT/TTS services are not available during tests
 	// This is acceptable for unit testing server initialization
 }
@@ -147,7 +134,6 @@ func TestNew_STTLanguageConfiguration(t *testing.T) {
 				Server: config.ServerConfig{
 					Host:         "0.0.0.0",
 					Port:         3000,
-					DBPath:       ":memory:",
 					ReadTimeout:  15 * time.Second,
 					WriteTimeout: 15 * time.Second,
 				},

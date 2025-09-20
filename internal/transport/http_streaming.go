@@ -38,19 +38,19 @@ type StreamingTransport struct {
 	frameHandlers map[FrameType]FrameHandler
 
 	// Configuration
-	maxSessions     int
-	sessionTimeout  time.Duration
+	maxSessions       int
+	sessionTimeout    time.Duration
 	heartbeatInterval time.Duration
 }
 
 // StreamSession represents an active streaming session with a puck
 type StreamSession struct {
-	ID            string
-	PuckID        string
-	StartTime     time.Time
-	LastActivity  time.Time
-	Context       context.Context
-	Cancel        context.CancelFunc
+	ID           string
+	PuckID       string
+	StartTime    time.Time
+	LastActivity time.Time
+	Context      context.Context
+	Cancel       context.CancelFunc
 
 	// Channels for communication
 	IncomingFrames chan *Frame
@@ -129,9 +129,8 @@ func (st *StreamingTransport) HandleStream(w http.ResponseWriter, r *http.Reques
 
 // handleIncomingStream processes incoming frames from the puck
 func (st *StreamingTransport) handleIncomingStream(session *StreamSession, body io.ReadCloser) {
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 	defer close(session.IncomingFrames)
-
 
 	for {
 		select {
@@ -148,20 +147,34 @@ func (st *StreamingTransport) handleIncomingStream(session *StreamSession, body 
 			}
 
 			// Parse header to get data length
-			frame, err := DeserializeFrame(headerBuf)
+			header, err := parseFrameHeader(headerBuf)
 			if err != nil {
 				logging.Sugar.Errorw("Invalid frame header", "session_id", session.ID, "error", err)
 				return
 			}
 
 			// Read remaining data if present
-			if len(frame.Data) > 0 {
-				frameData := make([]byte, len(frame.Data))
+			var frameData []byte
+			if header.Length > 0 {
+				frameData = make([]byte, header.Length)
 				if _, err := io.ReadFull(body, frameData); err != nil {
 					logging.Sugar.Errorw("Failed to read frame data", "session_id", session.ID, "error", err)
 					return
 				}
-				frame.Data = frameData
+			}
+
+			// Combine header and data for complete frame deserialization
+			completeFrame := make([]byte, HeaderSize+int(header.Length))
+			copy(completeFrame, headerBuf)
+			if len(frameData) > 0 {
+				copy(completeFrame[HeaderSize:], frameData)
+			}
+
+			// Deserialize complete frame
+			frame, err := DeserializeFrame(completeFrame)
+			if err != nil {
+				logging.Sugar.Errorw("Failed to deserialize frame", "session_id", session.ID, "error", err)
+				return
 			}
 
 			// Update session activity
@@ -216,7 +229,11 @@ func (st *StreamingTransport) handleOutgoingStream(session *StreamSession, w htt
 
 		case <-heartbeatTicker.C:
 			// Send heartbeat frame
-			heartbeat := NewFrame(FrameTypeHeartbeat, session.getSessionIDHash(), session.nextSequence(), uint64(time.Now().UnixMicro()), nil)
+			timestamp := time.Now().UnixMicro()
+			if timestamp < 0 {
+				timestamp = 0
+			}
+			heartbeat := NewFrame(FrameTypeHeartbeat, session.getSessionIDHash(), session.nextSequence(), uint64(timestamp), nil) //nolint:gosec // G115: Safe conversion, timestamp is validated above
 
 			data, err := heartbeat.Serialize()
 			if err != nil {

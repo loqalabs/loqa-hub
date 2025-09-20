@@ -40,22 +40,21 @@ const (
 
 // ServiceAvailability tracks availability of different services
 type ServiceAvailability struct {
-	STT     bool `json:"stt_available"`
-	TTS     bool `json:"tts_available"`
-	LLM     bool `json:"llm_available"`
-	NATS    bool `json:"nats_available"`
-	Storage bool `json:"storage_available"`
+	STT  bool `json:"stt_available"`
+	TTS  bool `json:"tts_available"`
+	LLM  bool `json:"llm_available"`
+	NATS bool `json:"nats_available"`
 }
 
 // SystemCapabilities represents detected system capabilities
 type SystemCapabilities struct {
-	Tier         PerformanceTier      `json:"tier"`
-	Services     ServiceAvailability  `json:"services"`
-	Hardware     HardwareInfo         `json:"hardware"`
-	Performance  PerformanceMetrics   `json:"performance"`
-	LastDetected time.Time           `json:"last_detected"`
-	Degraded     bool                `json:"degraded"`
-	DegradationReason string         `json:"degradation_reason,omitempty"`
+	Tier              PerformanceTier     `json:"tier"`
+	Services          ServiceAvailability `json:"services"`
+	Hardware          HardwareInfo        `json:"hardware"`
+	Performance       PerformanceMetrics  `json:"performance"`
+	LastDetected      time.Time           `json:"last_detected"`
+	Degraded          bool                `json:"degraded"`
+	DegradationReason string              `json:"degradation_reason,omitempty"`
 }
 
 // HardwareInfo contains system hardware information
@@ -82,10 +81,10 @@ type TierDetector struct {
 	capabilities SystemCapabilities
 
 	// Service URLs for health checks
-	sttURL    string
-	ttsURL    string
-	llmURL    string
-	natsURL   string
+	sttURL  string
+	ttsURL  string
+	llmURL  string
+	natsURL string
 
 	// Configuration
 	detectionInterval time.Duration
@@ -93,7 +92,7 @@ type TierDetector struct {
 	performanceWindow time.Duration
 
 	// Callbacks
-	onTierChange func(old, new PerformanceTier)
+	onTierChange  func(old, new PerformanceTier)
 	onDegradation func(reason string)
 }
 
@@ -228,9 +227,7 @@ func (td *TierDetector) detectServiceAvailability(ctx context.Context) ServiceAv
 	healthCtx, cancel := context.WithTimeout(ctx, td.healthTimeout)
 	defer cancel()
 
-	services := ServiceAvailability{
-		Storage: true, // SQLite is always available
-	}
+	services := ServiceAvailability{}
 
 	// Check STT service
 	services.STT = td.checkServiceHealth(healthCtx, td.sttURL+"/health")
@@ -259,7 +256,7 @@ func (td *TierDetector) checkServiceHealth(ctx context.Context, url string) bool
 	if err != nil {
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return resp.StatusCode == http.StatusOK
 }
@@ -285,7 +282,7 @@ func (td *TierDetector) measurePerformance(ctx context.Context) PerformanceMetri
 
 	// CPU and memory usage would require system monitoring
 	// Simplified for architecture migration
-	metrics.AvgCPUUsage = 50.0  // Placeholder
+	metrics.AvgCPUUsage = 50.0    // Placeholder
 	metrics.AvgMemoryUsage = 60.0 // Placeholder
 
 	return metrics
@@ -305,7 +302,7 @@ func (td *TierDetector) measureServiceLatency(ctx context.Context, url string) t
 	if err != nil {
 		return time.Hour // High latency for errors
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return time.Since(start)
 }
@@ -373,9 +370,16 @@ func (td *TierDetector) detectHardware() HardwareInfo {
 	memStats := &runtime.MemStats{}
 	runtime.ReadMemStats(memStats)
 
+	// Calculate memory in GB, checking for overflow
+	memoryBytes := memStats.Sys
+	memoryGB := memoryBytes / (1024 * 1024 * 1024)
+	if memoryGB > 2147483647 { // Max int32
+		memoryGB = 2147483647
+	}
+
 	return HardwareInfo{
 		CPUCores:     runtime.NumCPU(),
-		MemoryGB:     int(memStats.Sys / (1024 * 1024 * 1024)), // Approximate
+		MemoryGB:     int(memoryGB), //nolint:gosec // G115: Safe conversion after bounds check above
 		Architecture: runtime.GOARCH,
 		OS:           runtime.GOOS,
 	}
@@ -403,8 +407,6 @@ func (td *TierDetector) IsFeatureAvailable(feature string) bool {
 	case "local_llm":
 		return tier == TierStandard || tier == TierPro
 	case "streaming_responses":
-		return tier == TierPro
-	case "advanced_skills":
 		return tier == TierPro
 	case "reflex_only":
 		return true // Available in all tiers

@@ -33,9 +33,9 @@ type FrameType uint8
 
 const (
 	// Audio frame types
-	FrameTypeAudioData   FrameType = 0x01
-	FrameTypeAudioEnd    FrameType = 0x02
-	FrameTypeWakeWord    FrameType = 0x03
+	FrameTypeAudioData FrameType = 0x01
+	FrameTypeAudioEnd  FrameType = 0x02
+	FrameTypeWakeWord  FrameType = 0x03
 
 	// Control frame types
 	FrameTypeHeartbeat   FrameType = 0x10
@@ -44,8 +44,8 @@ const (
 	FrameTypeArbitration FrameType = 0x13
 
 	// Response frame types
-	FrameTypeResponse    FrameType = 0x20
-	FrameTypeStatus      FrameType = 0x21
+	FrameTypeResponse FrameType = 0x20
+	FrameTypeStatus   FrameType = 0x21
 )
 
 // Frame represents a binary frame in the protocol
@@ -73,8 +73,8 @@ const (
 	FrameMagic = 0x4C4F5141 // "LOQA" in big-endian
 
 	// Frame size constraints for ESP32 compatibility
-	MaxFrameSize = 4096  // 4KB max frame size
-	HeaderSize   = 24    // Fixed header size
+	MaxFrameSize = 4096 // 4KB max frame size
+	HeaderSize   = 24   // Fixed header size
 	MaxDataSize  = MaxFrameSize - HeaderSize
 )
 
@@ -84,11 +84,17 @@ func (f *Frame) Serialize() ([]byte, error) {
 		return nil, fmt.Errorf("frame data too large: %d bytes (max %d)", len(f.Data), MaxDataSize)
 	}
 
+	// Check data length to prevent overflow
+	dataLen := len(f.Data)
+	if dataLen > 65535 { // Max uint16
+		dataLen = 65535
+	}
+
 	header := FrameHeader{
 		Magic:     FrameMagic,
 		Type:      f.Type,
 		Reserved:  0,
-		Length:    uint16(len(f.Data)),
+		Length:    uint16(dataLen), //nolint:gosec // G115: Safe conversion after bounds check above
 		SessionID: f.SessionID,
 		Sequence:  f.Sequence,
 		Timestamp: f.Timestamp,
@@ -151,6 +157,33 @@ func DeserializeFrame(data []byte) (*Frame, error) {
 	}
 
 	return frame, nil
+}
+
+// parseFrameHeader parses just the header portion of frame data
+// This is used when reading frames incrementally (header first, then data)
+func parseFrameHeader(headerData []byte) (*FrameHeader, error) {
+	if len(headerData) != HeaderSize {
+		return nil, fmt.Errorf("invalid header size: %d bytes (expected %d)", len(headerData), HeaderSize)
+	}
+
+	buf := bytes.NewReader(headerData)
+	var header FrameHeader
+
+	if err := binary.Read(buf, binary.BigEndian, &header); err != nil {
+		return nil, fmt.Errorf("failed to read frame header: %w", err)
+	}
+
+	// Validate magic number
+	if header.Magic != FrameMagic {
+		return nil, fmt.Errorf("invalid frame magic: 0x%08X (expected 0x%08X)", header.Magic, FrameMagic)
+	}
+
+	// Validate data length doesn't exceed maximum
+	if header.Length > MaxDataSize {
+		return nil, fmt.Errorf("frame data too large: %d bytes (max %d)", header.Length, MaxDataSize)
+	}
+
+	return &header, nil
 }
 
 // NewFrame creates a new frame with the specified parameters

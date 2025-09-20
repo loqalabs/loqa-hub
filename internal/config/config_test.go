@@ -22,9 +22,6 @@ func TestLoad_DefaultValues(t *testing.T) {
 	if cfg.Server.Port != 3000 {
 		t.Errorf("Server.Port = %d, want %d", cfg.Server.Port, 3000)
 	}
-	if cfg.Server.DBPath != "./data/loqa-hub.db" {
-		t.Errorf("Server.DBPath = %q, want %q", cfg.Server.DBPath, "./data/loqa-hub.db")
-	}
 
 	// Test STT defaults
 	if cfg.STT.URL != "http://stt:8000" {
@@ -73,9 +70,8 @@ func TestLoad_EnvironmentVariables(t *testing.T) {
 		{
 			name: "Server configuration",
 			envVars: map[string]string{
-				"LOQA_HOST":      "127.0.0.1",
-				"LOQA_PORT":      "3000",
-				"LOQA_DB_PATH":   "/custom/path/db.sqlite",
+				"LOQA_HOST": "127.0.0.1",
+				"LOQA_PORT": "3000",
 			},
 			validate: func(t *testing.T, cfg *Config) {
 				if cfg.Server.Host != "127.0.0.1" {
@@ -83,9 +79,6 @@ func TestLoad_EnvironmentVariables(t *testing.T) {
 				}
 				if cfg.Server.Port != 3000 {
 					t.Errorf("Server.Port = %d, want %d", cfg.Server.Port, 3000)
-				}
-				if cfg.Server.DBPath != "/custom/path/db.sqlite" {
-					t.Errorf("Server.DBPath = %q, want %q", cfg.Server.DBPath, "/custom/path/db.sqlite")
 				}
 			},
 		},
@@ -262,7 +255,7 @@ func TestSTTLanguageConfigurationBackwardsCompatibility(t *testing.T) {
 // Helper function to clear environment variables used in tests
 func clearEnvVars() {
 	envVars := []string{
-		"LOQA_HOST", "LOQA_PORT", "LOQA_DB_PATH",
+		"LOQA_HOST", "LOQA_PORT",
 		"LOQA_READ_TIMEOUT", "LOQA_WRITE_TIMEOUT",
 		"STT_URL", "STT_LANGUAGE", "STT_TEMPERATURE", "STT_MAX_TOKENS",
 		"TTS_URL", "TTS_VOICE", "TTS_SPEED", "TTS_FORMAT", "TTS_NORMALIZE",
@@ -273,7 +266,7 @@ func clearEnvVars() {
 		"STREAMING_FALLBACK_ENABLED", "STREAMING_METRICS_ENABLED",
 		"OLLAMA_URL", "LOG_LEVEL", "LOG_FORMAT",
 		"NATS_URL", "NATS_SUBJECT", "NATS_MAX_RECONNECT", "NATS_RECONNECT_WAIT",
-		"LOQA_DATA_RETENTION", "LOQA_ZERO_PERSISTENCE", "LOQA_AUTO_CLEANUP", "LOQA_CLEANUP_INTERVAL",
+		"LOQA_LOCAL_ONLY", "LOQA_STATELESS_MODE",
 	}
 
 	for _, envVar := range envVars {

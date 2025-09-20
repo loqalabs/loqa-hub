@@ -43,21 +43,19 @@ WORKDIR /app
 # Copy binary from builder stage
 COPY --from=go-builder /app/loqa-hub/loqa-hub .
 
-# Set default environment variables
+# Set default environment variables for HTTP/1.1 streaming architecture
 ENV STT_URL=http://stt:8000
-ENV STT_LANGUAGE=en
+ENV TTS_URL=http://tts:8880
 ENV OLLAMA_URL=http://ollama:11434
 ENV OLLAMA_MODEL=llama3.2:3b
 ENV NATS_URL=nats://nats:4222
-ENV NATS_SUBJECT=loqa.commands
 ENV LOQA_HOST=0.0.0.0
 ENV LOQA_PORT=3000
-ENV LOQA_GRPC_PORT=50051
 ENV LOG_LEVEL=info
 ENV LOG_FORMAT=json
 
-# Expose ports
-EXPOSE 3000 50051
+# Expose HTTP port for streaming and API
+EXPOSE 3000
 
 # Run the hub service
 CMD ["./loqa-hub"]

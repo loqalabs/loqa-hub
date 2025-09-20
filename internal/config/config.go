@@ -40,7 +40,6 @@ type Config struct {
 type ServerConfig struct {
 	Host         string
 	Port         int
-	DBPath       string
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 }
@@ -95,17 +94,11 @@ type NATSConfig struct {
 
 // PrivacyConfig holds privacy and data retention configuration
 type PrivacyConfig struct {
-	// DataRetention controls how long voice event data is kept
-	DataRetention time.Duration
+	// LocalOnly ensures all processing stays local (no cloud services)
+	LocalOnly bool
 
-	// ZeroPersistence disables all persistent storage of voice events (RAM only)
-	ZeroPersistence bool
-
-	// AutoCleanupEnabled enables automatic cleanup of old voice events
-	AutoCleanupEnabled bool
-
-	// CleanupInterval controls how often the cleanup job runs
-	CleanupInterval time.Duration
+	// StatelessMode disables all persistent storage (fully stateless)
+	StatelessMode bool
 }
 
 // Load loads configuration from environment variables with defaults
@@ -114,7 +107,6 @@ func Load() (*Config, error) {
 		Server: ServerConfig{
 			Host:         getEnvString("LOQA_HOST", "0.0.0.0"),
 			Port:         getEnvInt("LOQA_PORT", 3000),
-			DBPath:       getEnvString("LOQA_DB_PATH", "./data/loqa-hub.db"),
 			ReadTimeout:  getEnvDuration("LOQA_READ_TIMEOUT", 30*time.Second),
 			WriteTimeout: getEnvDuration("LOQA_WRITE_TIMEOUT", 30*time.Second),
 		},
@@ -157,10 +149,8 @@ func Load() (*Config, error) {
 			ReconnectWait: getEnvDuration("NATS_RECONNECT_WAIT", 2*time.Second),
 		},
 		Privacy: PrivacyConfig{
-			DataRetention:      getEnvDuration("LOQA_DATA_RETENTION", 30*24*time.Hour), // 30 days default
-			ZeroPersistence:    getEnvBool("LOQA_ZERO_PERSISTENCE", false),             // false by default
-			AutoCleanupEnabled: getEnvBool("LOQA_AUTO_CLEANUP", true),                  // true by default
-			CleanupInterval:    getEnvDuration("LOQA_CLEANUP_INTERVAL", 24*time.Hour),  // daily cleanup
+			LocalOnly:     getEnvBool("LOQA_LOCAL_ONLY", true),     // Default to local-only
+			StatelessMode: getEnvBool("LOQA_STATELESS_MODE", true), // Default to stateless
 		},
 	}
 
@@ -191,14 +181,6 @@ func (c *Config) validate() error {
 
 	if c.TTS.Speed <= 0 {
 		return fmt.Errorf("TTS speed must be positive: %f", c.TTS.Speed)
-	}
-
-	if c.Privacy.DataRetention < 0 {
-		return fmt.Errorf("data retention duration cannot be negative: %s", c.Privacy.DataRetention)
-	}
-
-	if c.Privacy.CleanupInterval <= 0 {
-		return fmt.Errorf("cleanup interval must be positive: %s", c.Privacy.CleanupInterval)
 	}
 
 	return nil

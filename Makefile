@@ -1,4 +1,4 @@
-.PHONY: build test lint lint-fix fmt vet clean run install-tools help
+.PHONY: build test lint lint-fix fmt vet clean run install-tools coverage coverage-html help
 
 # Go parameters
 GOCMD=go
@@ -20,9 +20,16 @@ run: build ## Build and run the application
 test: ## Run tests
 	$(GOTEST) -v ./...
 
-test-coverage: ## Run tests with coverage
+test-coverage: ## Run tests with coverage (simple)
 	$(GOTEST) -v -coverprofile=coverage.out ./...
 	$(GOCMD) tool cover -html=coverage.out
+
+coverage: ## Run comprehensive coverage analysis
+	@./scripts/coverage.sh
+
+coverage-html: coverage ## Generate and open HTML coverage report
+	@echo "Opening coverage report in browser..."
+	@open coverage/coverage.html 2>/dev/null || echo "Coverage report saved to: coverage/coverage.html"
 
 # Linting and formatting
 lint: ## Run golangci-lint (includes staticcheck, errcheck, govet, etc.)
@@ -47,11 +54,12 @@ tidy: ## Tidy go modules
 clean: ## Clean build artifacts
 	$(GOCLEAN)
 	rm -rf $(BINARY_PATH)
-	rm -rf coverage.out
+	rm -rf coverage.out coverage/
 
 # Install development tools
 install-tools: ## Install development tools
 	$(GOCMD) install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	$(GOCMD) install golang.org/x/tools/cmd/cover@latest
 
 # Pre-commit checks (run before committing)
 pre-commit: fmt vet test lint-fast ## Run all pre-commit checks
