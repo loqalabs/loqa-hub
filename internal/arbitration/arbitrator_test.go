@@ -743,11 +743,14 @@ func TestProcessWakeWordDetection_WindowExpiry(t *testing.T) {
 	// Set up callback to capture result
 	var result *ArbitrationResult
 	var wg sync.WaitGroup
+	var callbackOnce sync.Once
 	wg.Add(1)
 
 	arbitrator.SetArbitrationCompleteCallback(func(r *ArbitrationResult) {
-		result = r
-		wg.Done()
+		callbackOnce.Do(func() {
+			result = r
+			wg.Done()
+		})
 	})
 
 	// Create detection
