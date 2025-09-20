@@ -455,10 +455,37 @@ func TestStreamSessionConcurrency(t *testing.T) {
 type mockResponseWriter struct {
 	*httptest.ResponseRecorder
 	flushed bool
+	mutex   sync.Mutex
 }
 
 func (m *mockResponseWriter) Flush() {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 	m.flushed = true
+}
+
+func (m *mockResponseWriter) IsFlushed() bool {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	return m.flushed
+}
+
+func (m *mockResponseWriter) GetBodyLen() int {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	return m.Body.Len()
+}
+
+func (m *mockResponseWriter) GetBodyBytes() []byte {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	return m.Body.Bytes()
+}
+
+func (m *mockResponseWriter) Write(data []byte) (int, error) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	return m.ResponseRecorder.Write(data)
 }
 
 type mockReadCloser struct {
@@ -560,12 +587,12 @@ func TestHandleOutgoingStream_Heartbeat(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Verify data was written (heartbeat frame)
-	if mockWriter.Body.Len() == 0 {
+	if mockWriter.GetBodyLen() == 0 {
 		t.Error("Heartbeat should be written to response")
 	}
 
 	// Verify flusher was called
-	if !mockWriter.flushed {
+	if !mockWriter.IsFlushed() {
 		t.Error("Response should be flushed after heartbeat")
 	}
 
@@ -609,18 +636,18 @@ func TestHandleOutgoingStream_Frame(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Verify frame was written
-	if mockWriter.Body.Len() == 0 {
+	if mockWriter.GetBodyLen() == 0 {
 		t.Error("Frame should be written to response")
 	}
 
 	// Verify the written data is a valid frame
-	data := mockWriter.Body.Bytes()
+	data := mockWriter.GetBodyBytes()
 	if len(data) < HeaderSize {
 		t.Error("Written data should contain at least frame header")
 	}
 
 	// Verify flusher was called
-	if !mockWriter.flushed {
+	if !mockWriter.IsFlushed() {
 		t.Error("Response should be flushed after frame")
 	}
 
