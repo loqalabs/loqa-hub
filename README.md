@@ -7,29 +7,67 @@
 
 [![CI/CD Pipeline](https://github.com/loqalabs/loqa-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/loqalabs/loqa-hub/actions/workflows/ci.yml)
 
-Central orchestrator for the Loqa local-first voice assistant platform.
+Central orchestrator for the Loqa local-first voice assistant platform with HTTP/1.1 streaming architecture.
 
 ## Overview
 
-Loqa Hub is the core service that handles:
-- gRPC API for audio input from relay devices
-- Speech-to-text processing via OpenAI-compatible STT service
-- LLM-based intent parsing and command extraction with **multi-command support**
-- **NEW:** Real-time streaming LLM responses with progressive audio synthesis
-- Sequential command execution with rollback capabilities
-- NATS integration for publishing commands to other services
-- Complete voice event tracking and observability
+Loqa Hub is the core stateless service that handles:
+- **HTTP/1.1 Binary Streaming**: Real-time audio frame processing from ESP32 pucks
+- **Wake Word Arbitration**: Multi-puck wake word competition with 500ms windows
+- **Intent Cascade Processing**: Reflex → Local LLM → Cloud pipeline with privacy controls
+- **Performance Tier Detection**: Automatic capability detection with graceful degradation
+- **Skills Integration**: Modular plugin system for voice command handling
+- **STT/TTS Integration**: OpenAI-compatible speech services
+- **Stateless Design**: No persistent storage, fully event-driven architecture
+
+## Architecture
+
+### 🆕 HTTP/1.1 Streaming Transport
+
+The new stateless architecture uses HTTP/1.1 chunked transfer encoding for real-time communication:
+
+- **Binary Frame Protocol**: Efficient 4KB frames optimized for ESP32 devices
+- **Magic Number Validation**: "LOQA" (0x4C4F5141) for protocol integrity
+- **Frame Types**: Audio data, wake words, heartbeats, control signals
+- **Session Management**: Stateless session tracking via frame headers
+- **ESP32 Optimized**: 24-byte headers, minimal memory footprint
+
+### 🎯 Wake Word Arbitration
+
+Multi-puck wake word detection with intelligent arbitration:
+
+- **Competition Window**: 500ms window for multiple puck responses
+- **Scoring Algorithm**: Distance, confidence, and signal quality based
+- **Winner Selection**: Highest scoring puck gets voice processing rights
+- **Fair Arbitration**: Prevents single puck dominance
+
+### 🧠 Intent Cascade Processing
+
+Three-tier intent processing with privacy controls:
+
+1. **Reflex Layer**: Instant responses for simple commands
+2. **Local LLM**: Ollama-based processing for complex intents
+3. **Cloud Processing**: Optional tier for advanced AI (privacy-optional)
+
+### 🎚️ Performance Tier Detection
+
+Automatic system capability detection:
+
+- **Basic Tier**: Reflex-only processing, minimal resources
+- **Standard Tier**: Local LLM, full features (4+ cores, 8GB+ RAM)
+- **Pro Tier**: Advanced processing, experimental features (8+ cores, 16GB+ RAM)
+- **Graceful Degradation**: Automatic fallback during performance issues
 
 ## Features
 
-- 🎤 **Audio Processing**: Receives audio streams from relay devices via gRPC
-- 📝 **Speech Recognition**: Local speech-to-text using OpenAI-compatible STT service with confidence thresholds and wake word normalization
-- 🤖 **Intent Parsing**: Natural language understanding via Ollama LLM with multi-command support
-- 🔗 **Multi-Command Processing**: Parse and execute compound utterances like "turn on the lights and play music"
-- 📡 **Event Publishing**: Publishes parsed commands to NATS message bus
-- 🔄 **Command Queue**: Sequential execution with rollback capabilities for failed command chains
-- ⚡ **Performance**: <200ms execution time per additional command in multi-command utterances
-- 🔒 **Privacy-First**: All processing happens locally, no cloud dependencies
+- 🌐 **HTTP/1.1 Streaming**: Real-time binary frame processing optimized for ESP32
+- 🎯 **Wake Word Arbitration**: Multi-puck competition with intelligent winner selection
+- 🧠 **Intent Cascade**: Reflex → LLM → Cloud processing pipeline
+- 🎚️ **Adaptive Performance**: Automatic tier detection with graceful degradation
+- 🧩 **Skills System**: Modular plugin architecture for extensible voice commands
+- 🔒 **Privacy-First**: Local processing by default, cloud processing optional
+- ⚡ **Stateless Design**: No database dependencies, fully event-driven
+- 📊 **Real-time Metrics**: Performance monitoring and health status
 
 ### 🆕 Milestone 4a: Modular Skill Plugin Architecture
 
@@ -41,15 +79,14 @@ Loqa Hub is the core service that handles:
 - 🌐 **REST API**: Complete skill management via `/api/skills` endpoints
 - 🔧 **Multi-Format Support**: Go plugins, process-based skills, and future WASM support
 
-### 🆕 Milestone 2: Observability & Event Tracking
+### 🆕 Stateless Event Processing
 
-- 📊 **Voice Event Tracking**: Every interaction generates structured events with full traceability
-- 🗄️ **SQLite Storage**: Persistent event storage with optimized performance (WAL, indexes)
+- 📊 **Real-time Events**: Every interaction generates structured events for immediate processing
+- 🌐 **HTTP API Endpoints**: RESTful endpoints for system status and capabilities
 - 📝 **Structured Logging**: Rich context logging with Zap (configurable JSON/console output)
-- 🌐 **HTTP API**: RESTful endpoints for event access and debugging
-- 🔍 **Audio Fingerprinting**: SHA-256 hashing for deduplication and analysis
-- ⏱️ **Performance Metrics**: Processing time tracking throughout the voice pipeline
-- 🚨 **Error Tracking**: Comprehensive error state capture and reporting
+- ⏱️ **Performance Metrics**: Real-time latency and throughput monitoring
+- 🚨 **Health Status**: Comprehensive system health and degradation detection
+- 🎯 **Arbitration Metrics**: Wake word competition statistics and analysis
 
 ### 🆕 Milestone 4b: Multi-Command Intent Parsing
 
@@ -81,9 +118,19 @@ Loqa Hub is the core service that handles:
 - ⚙️ **Configurable Streaming**: Feature flags and settings for production deployment
 - 🎯 **Memory Safety**: Comprehensive cleanup to prevent goroutine leaks and resource exhaustion
 
-## Architecture
+## Endpoints
 
-The Hub service acts as the central nervous system of the Loqa platform, orchestrating the flow from voice input to actionable commands. With Milestone 2, all voice interactions are now fully traceable with structured events stored in SQLite and accessible via HTTP API.
+The Hub service provides HTTP/1.1 streaming and RESTful API endpoints:
+
+### Streaming Endpoints
+- `/stream/puck` - HTTP/1.1 binary streaming for ESP32 pucks
+- `/api/capabilities` - System capabilities and performance tier information
+- `/api/arbitration/stats` - Wake word arbitration statistics
+- `/api/tier` - Current performance tier and feature availability
+
+### Management Endpoints
+- `/health` - System health status with service availability
+- `/api/intent/process` - Text-based intent processing for testing
 
 ## Configuration
 
@@ -93,14 +140,14 @@ The Hub service acts as the central nervous system of the Loqa platform, orchest
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LOQA_HUB_PORT` | `3000` | HTTP server port |
-| `LOQA_GRPC_PORT` | `50051` | gRPC server port |
-| `DB_PATH` | `./data/loqa-hub.db` | SQLite database file location |
+| `LOQA_PORT` | `3000` | HTTP server port for streaming and API |
+| `STT_URL` | `http://stt:8000` | OpenAI-compatible STT service URL |
+| `TTS_URL` | `http://tts:8880` | OpenAI-compatible TTS service URL |
+| `OLLAMA_URL` | `http://ollama:11434` | Ollama API endpoint for intent processing |
+| `OLLAMA_MODEL` | `llama3.2:3b` | Ollama model for intent parsing |
+| `NATS_URL` | `nats://nats:4222` | NATS server URL for event publishing |
 | `LOG_LEVEL` | `info` | Logging level (debug, info, warn, error) |
 | `LOG_FORMAT` | `console` | Log output format (json, console) |
-| `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
-| `OLLAMA_MODEL` | `llama3.2:3b` | Ollama model for intent parsing |
-| `NATS_URL` | `nats://localhost:4222` | NATS server URL |
 
 #### 🆕 Streaming Configuration
 
@@ -119,21 +166,19 @@ The Hub service acts as the central nervous system of the Loqa platform, orchest
 
 ### API Access
 
-The Hub exposes RESTful APIs for voice events and skill management:
+The Hub exposes HTTP/1.1 streaming and RESTful APIs:
 
-**Voice Events API:**
-- `GET /api/voice-events` - List events with pagination and filtering
-- `GET /api/voice-events/{uuid}` - Get specific event details
-- `POST /api/voice-events` - Create events (testing/integrations)
+**Streaming Transport:**
+- `POST /stream/puck` - HTTP/1.1 binary streaming endpoint for ESP32 pucks
 
-**Skills Management API:**
-- `GET /api/skills` - List all loaded skills with status
-- `GET /api/skills/{id}` - Get detailed skill information
-- `POST /api/skills` - Load a new skill from path
-- `DELETE /api/skills/{id}` - Unload a skill
-- `POST /api/skills/{id}/enable` - Enable a skill
-- `POST /api/skills/{id}/disable` - Disable a skill
-- `POST /api/skills/{id}/reload` - Reload a skill
+**System Information:**
+- `GET /health` - System health and service availability
+- `GET /api/capabilities` - Performance tier and system capabilities
+- `GET /api/tier` - Current tier and feature availability
+- `GET /api/arbitration/stats` - Wake word arbitration statistics
+
+**Intent Processing:**
+- `POST /api/intent/process` - Process text through intent cascade
 
 See [`API.md`](API.md) for complete endpoint documentation with examples.
 

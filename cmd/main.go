@@ -41,10 +41,9 @@ func main() {
 
 	srv := server.New(cfg)
 
-	logging.Sugar.Infow("🚀 loqa-hub starting",
+	logging.Sugar.Infow("🚀 loqa-hub starting with HTTP/1.1 streaming architecture",
 		"http_port", cfg.Server.Port,
-		"grpc_port", cfg.Server.GRPCPort,
-		"db_path", cfg.Server.DBPath,
+		"architecture", "HTTP/1.1 Binary Streaming (Stateless)",
 	)
 
 	if err := srv.Start(); err != nil {

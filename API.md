@@ -1,210 +1,291 @@
 # Loqa Hub API
 
-The Loqa Hub API provides access to voice events, skill management, and streaming metrics. All endpoints return JSON responses.
+The Loqa Hub API provides HTTP/1.1 streaming transport and RESTful system management endpoints. The new stateless architecture focuses on real-time processing without persistent storage.
 
 ## Base URL
 
 ```
-http://localhost:3000/api
+http://localhost:3000
 ```
 
 ## API Categories
 
-- [Voice Events API](#voice-events-api) - Event tracking and history
-- [Skills Management API](#skills-management-api) - Skill plugin administration
-- [🆕 Streaming Metrics API](#streaming-metrics-api) - Real-time streaming performance
+- [Streaming Transport API](#streaming-transport-api) - HTTP/1.1 binary streaming for ESP32 pucks
+- [System Information API](#system-information-api) - Health, capabilities, and performance tiers
+- [Arbitration API](#arbitration-api) - Wake word arbitration statistics
+- [Intent Processing API](#intent-processing-api) - Text-based intent cascade testing
 
 ---
 
-## Voice Events API
+## Streaming Transport API
 
-### List Voice Events
+The streaming transport API provides HTTP/1.1 chunked transfer encoding for real-time communication with ESP32 pucks.
 
-**GET** `/voice-events`
+### Binary Frame Streaming
 
-Retrieves a paginated list of voice events with optional filtering.
+**POST** `/stream/puck`
 
-#### Query Parameters
+Establishes an HTTP/1.1 streaming connection for binary frame communication with ESP32 devices.
 
-| Parameter   | Type    | Default | Description                                    |
-|-------------|---------|---------|------------------------------------------------|
-| `page`      | integer | 1       | Page number (1-based)                        |
-| `page_size` | integer | 20      | Number of events per page (max 100)          |
-| `relay_id`   | string  | -       | Filter by specific relay ID                    |
-| `intent`    | string  | -       | Filter by command intent                      |
-| `success`   | boolean | -       | Filter by success status (true/false)        |
-| `start_time`| string  | -       | Filter by start time (RFC3339 format)        |
-| `end_time`  | string  | -       | Filter by end time (RFC3339 format)          |
-| `sort_by`   | string  | timestamp | Sort field (`timestamp`, `confidence`, `processing_time`) |
-| `sort_order`| string  | DESC    | Sort order (`ASC`, `DESC`)                    |
+#### Headers
+
+| Header | Value | Description |
+|--------|-------|-------------|
+| `Content-Type` | `application/octet-stream` | Binary frame data |
+| `Transfer-Encoding` | `chunked` | HTTP/1.1 chunked encoding |
+| `Connection` | `keep-alive` | Persistent connection |
+
+#### Binary Frame Format
+
+Each frame consists of a 24-byte header followed by optional data payload:
+
+```
++------------------+------------------+------------------+
+| Magic (4 bytes)  | Type (1 byte)    | Reserved (1 byte)|
++------------------+------------------+------------------+
+| Length (2 bytes) | SessionID (4 bytes)                 |
++------------------+----------------------------------+
+| Sequence (4 bytes)                                   |
++------------------------------------------------------+
+| Timestamp (8 bytes)                                  |
++------------------------------------------------------+
+| Data payload (0-4072 bytes)                         |
++------------------------------------------------------+
+```
+
+#### Frame Types
+
+| Type | Value | Description |
+|------|-------|-------------|
+| `FrameTypeAudioData` | `0x01` | Audio PCM data |
+| `FrameTypeAudioEnd` | `0x02` | End of audio stream |
+| `FrameTypeWakeWord` | `0x03` | Wake word detection |
+| `FrameTypeHeartbeat` | `0x10` | Connection keepalive |
+| `FrameTypeHandshake` | `0x11` | Session initialization |
+| `FrameTypeError` | `0x12` | Error notification |
+| `FrameTypeArbitration` | `0x13` | Wake word arbitration |
+| `FrameTypeResponse` | `0x20` | Hub response |
+| `FrameTypeStatus` | `0x21` | Status update |
+
+#### Example Usage
+
+```bash
+# ESP32 establishes streaming connection
+curl -X POST "http://localhost:3000/stream/puck" \
+  -H "Content-Type: application/octet-stream" \
+  -H "Transfer-Encoding: chunked" \
+  --data-binary @audio_frames.bin
+```
+
+---
+
+## System Information API
+
+### Health Status
+
+**GET** `/health`
+
+Returns the current health status of the Hub and all connected services.
 
 #### Example Request
 
 ```bash
-curl "http://localhost:3000/api/voice-events?page=1&page_size=10&relay_id=kitchen-relay&intent=turn_on"
+curl "http://localhost:3000/health"
 ```
 
 #### Example Response
 
 ```json
 {
-  "events": [
+  "status": "ok",
+  "timestamp": "2025-01-15T10:30:45Z",
+  "architecture": "HTTP/1.1 Binary Streaming",
+  "tier": "standard",
+  "services": {
+    "stt_available": true,
+    "tts_available": true,
+    "llm_available": true,
+    "nats_available": true
+  },
+  "degraded": false
+}
+```
+
+### System Capabilities
+
+**GET** `/api/capabilities`
+
+Returns detailed system capabilities including hardware information and performance metrics.
+
+#### Example Request
+
+```bash
+curl "http://localhost:3000/api/capabilities"
+```
+
+#### Example Response
+
+```json
+{
+  "tier": "standard",
+  "services": {
+    "stt_available": true,
+    "tts_available": true,
+    "llm_available": true,
+    "nats_available": true
+  },
+  "hardware": {
+    "cpu_cores": 8,
+    "memory_gb": 16,
+    "architecture": "amd64",
+    "os": "linux"
+  },
+  "performance": {
+    "avg_cpu_usage": 45.2,
+    "avg_memory_usage": 32.1,
+    "stt_latency": "150ms",
+    "tts_latency": "100ms",
+    "llm_latency": "800ms",
+    "last_measured": "2025-01-15T10:30:00Z"
+  },
+  "last_detected": "2025-01-15T10:30:45Z",
+  "degraded": false
+}
+```
+
+### Performance Tier Information
+
+**GET** `/api/tier`
+
+Returns current performance tier and available features.
+
+#### Example Request
+
+```bash
+curl "http://localhost:3000/api/tier"
+```
+
+#### Example Response
+
+```json
+{
+  "current_tier": "standard",
+  "features": {
+    "local_llm": true,
+    "streaming_responses": false,
+    "reflex_only": true
+  }
+}
+```
+
+### Performance Tiers
+
+| Tier | Requirements | Features |
+|------|-------------|----------|
+| **Basic** | 2+ cores, 2GB+ RAM | Reflex-only processing |
+| **Standard** | 4+ cores, 8GB+ RAM | Local LLM, full features |
+| **Pro** | 8+ cores, 16GB+ RAM | Advanced processing, experimental features |
+
+---
+
+## Arbitration API
+
+### Wake Word Arbitration Statistics
+
+**GET** `/api/arbitration/stats`
+
+Returns statistics about wake word arbitration including recent competitions and performance metrics.
+
+#### Example Request
+
+```bash
+curl "http://localhost:3000/api/arbitration/stats"
+```
+
+#### Example Response
+
+```json
+{
+  "total_arbitrations": 1247,
+  "successful_arbitrations": 1198,
+  "failed_arbitrations": 49,
+  "average_arbitration_time": "85ms",
+  "recent_arbitrations": [
     {
-      "uuid": "123e4567-e89b-12d3-a456-426614174000",
-      "request_id": "kitchen-relay-001",
-      "relay_id": "kitchen-relay",
       "timestamp": "2025-01-15T10:30:45Z",
-      "audio_duration": 2.5,
-      "sample_rate": 16000,
-      "wake_word_detected": true,
-      "transcription": "turn on the lights",
-      "intent": "turn_on",
-      "entities": {
-        "device": "lights",
-        "location": "kitchen"
-      },
-      "confidence": 0.95,
-      "response_text": "Turning on the kitchen lights",
-      "processing_time_ms": 150,
-      "success": true,
-      "error_message": null
+      "winner_puck_id": "kitchen-puck-01",
+      "winner_score": 0.92,
+      "total_detections": 3,
+      "arbitration_time": "78ms",
+      "all_detections": [
+        {
+          "puck_id": "kitchen-puck-01",
+          "confidence": 0.95,
+          "distance": 1.2,
+          "signal_quality": 0.89,
+          "score": 0.92
+        },
+        {
+          "puck_id": "living-room-puck-02",
+          "confidence": 0.87,
+          "distance": 3.1,
+          "signal_quality": 0.76,
+          "score": 0.71
+        }
+      ]
     }
   ],
-  "total": 1,
-  "page": 1,
-  "page_size": 10,
-  "total_pages": 1
+  "performance_metrics": {
+    "average_competition_size": 2.3,
+    "most_active_puck": "kitchen-puck-01",
+    "fairness_score": 0.88
+  }
 }
 ```
 
-### Get Voice Event by ID
+---
 
-**GET** `/voice-events/{uuid}`
+## Intent Processing API
 
-Retrieves a specific voice event by its UUID.
+### Process Text Intent
 
-#### Path Parameters
+**POST** `/api/intent/process`
 
-| Parameter | Type   | Description           |
-|-----------|--------|-----------------------|
-| `uuid`    | string | Voice event UUID      |
-
-#### Example Request
-
-```bash
-curl "http://localhost:3000/api/voice-events/123e4567-e89b-12d3-a456-426614174000"
-```
-
-#### Example Response
-
-```json
-{
-  "uuid": "123e4567-e89b-12d3-a456-426614174000",
-  "request_id": "kitchen-relay-001",
-  "relay_id": "kitchen-relay",
-  "timestamp": "2025-01-15T10:30:45Z",
-  "audio_duration": 2.5,
-  "sample_rate": 16000,
-  "wake_word_detected": true,
-  "transcription": "turn on the lights",
-  "intent": "turn_on",
-  "entities": {
-    "device": "lights",
-    "location": "kitchen"
-  },
-  "confidence": 0.95,
-  "response_text": "Turning on the kitchen lights",
-  "processing_time_ms": 150,
-  "success": true,
-  "error_message": null
-}
-```
-
-### Create Voice Event
-
-**POST** `/voice-events`
-
-Creates a new voice event. Useful for testing or external integrations.
+Processes text through the intent cascade for testing and development purposes.
 
 #### Request Body
 
 ```json
 {
-  "relay_id": "test-relay",
-  "request_id": "test-request-001",
-  "transcription": "hello loqa",
-  "intent": "greeting",
-  "entities": {
-    "greeting_type": "hello"
-  },
-  "confidence": 0.88,
-  "response_text": "Hello! How can I help you?",
-  "audio_duration": 1.2,
-  "sample_rate": 16000,
-  "wake_word_detected": false
+  "text": "turn on the living room lights"
 }
 ```
 
 #### Example Request
 
 ```bash
-curl -X POST "http://localhost:3000/api/voice-events" \
+curl -X POST "http://localhost:3000/api/intent/process" \
   -H "Content-Type: application/json" \
-  -d '{
-    "relay_id": "test-relay",
-    "transcription": "hello loqa",
-    "intent": "greeting",
-    "confidence": 0.88,
-    "response_text": "Hello! How can I help you?"
-  }'
+  -d '{"text": "turn on the living room lights"}'
 ```
 
 #### Example Response
 
 ```json
 {
-  "uuid": "456e7890-e12b-34d5-b678-789012345000",
-  "request_id": "test-relay",
-  "relay_id": "test-relay",
-  "timestamp": "2025-01-15T10:35:00Z",
-  "audio_hash": "sha256:def456...",
-  "audio_duration": 1.2,
-  "sample_rate": 16000,
-  "wake_word_detected": false,
-  "transcription": "hello loqa",
-  "intent": "greeting",
+  "type": "device_control",
+  "confidence": 0.95,
+  "text": "turn on the living room lights",
   "entities": {
-    "greeting_type": "hello"
+    "device": "lights",
+    "location": "living room",
+    "action": "turn_on"
   },
-  "confidence": 0.88,
-  "response_text": "Hello! How can I help you?",
-  "processing_time_ms": 0,
-  "success": true,
-  "error_message": null
+  "response": "Turning on the living room lights",
+  "processing_tier": "local_llm",
+  "processing_time_ms": 245
 }
 ```
-
-## Voice Event Schema
-
-### VoiceEvent Object
-
-| Field                | Type              | Description                                    |
-|---------------------|-------------------|------------------------------------------------|
-| `uuid`              | string            | Unique identifier for the event               |
-| `request_id`        | string            | Request identifier from the relay              |
-| `relay_id`           | string            | Identifier of the relay that sent the audio   |
-| `timestamp`         | string (RFC3339)  | When the event was created                    |
-| `audio_duration`    | number            | Duration of audio in seconds                  |
-| `sample_rate`       | integer           | Audio sample rate (Hz)                        |
-| `wake_word_detected`| boolean           | Whether wake word was detected                |
-| `transcription`     | string            | Speech-to-text result                         |
-| `intent`            | string            | Parsed command intent                         |
-| `entities`          | object            | Extracted entities from the command           |
-| `confidence`        | number (0-1)      | Confidence score for intent classification    |
-| `response_text`     | string            | Response sent back to the relay                |
-| `processing_time_ms`| integer           | Total processing time in milliseconds         |
-| `success`           | boolean           | Whether the event was processed successfully  |
-| `error_message`     | string (nullable) | Error message if processing failed            |
 
 ## Error Responses
 
@@ -250,241 +331,23 @@ Currently no authentication is required. In production environments, consider im
 
 CORS headers are not currently set. For web-based frontends, consider adding appropriate CORS configuration.
 
-## STT Confidence & Wake Word Processing
-
-The Loqa hub includes advanced speech-to-text processing with confidence thresholds and wake word normalization.
-
-### Wake Word Detection
-
-The system automatically detects and strips wake words from transcriptions before intent parsing:
-
-#### Supported Wake Word Patterns
-- `"Hey Loqa"` (primary)
-- `"Hey Luca"`, `"Hey Luka"`, `"Hey Loca"` (common STT misrecognitions)
-- `"Hey Logic"`, `"Hey Local"` (other variants)
-- `"Loqa"`, `"Luca"`, `"Luka"` (standalone variants)
-
-#### Processing Behavior
-- **Case insensitive**: `"HEY LOQA"` is handled the same as `"hey loqa"`
-- **Punctuation tolerant**: `"Hey Loqa, turn on lights"` → `"turn on lights"`
-- **Preserves original**: Original transcription is logged for debugging
-
-### Confidence Thresholds
-
-The system estimates transcription confidence and handles low-confidence cases gracefully:
-
-#### Confidence Estimation Factors
-- **Text length**: Very short utterances (< 3 chars) reduce confidence
-- **Pattern recognition**: Nonsensical patterns (`"???"`, `"..."`) reduce confidence
-- **Repetition detection**: Stammering patterns (`"aaaaaah"`) reduce confidence
-- **Wake word boost**: Presence of wake words increases confidence
-
-#### Confidence Handling
-- **High confidence (≥60%)**: Process normally
-- **Low confidence (<60%)**: Send confirmation prompt
-- **Empty after wake word stripping**: Always request confirmation
-
-#### Example Confidence Responses
-```json
-{
-  "transcription": "turn lights",
-  "confidence": 0.45,
-  "response_text": "I'm not sure I heard you correctly. Did you say 'turn lights'? Please repeat if that's not right.",
-  "command": "confirmation_needed"
-}
-```
-
-### Enhanced Logging
-
-Voice events now include detailed STT processing information:
-
-```json
-{
-  "uuid": "123e4567-e89b-12d3-a456-426614174000",
-  "transcription": "turn on the lights",
-  "confidence": 0.85,
-  "wake_word_detected": true,
-  "wake_word_variant": "hey loqa",
-  "original_transcription": "Hey Loqa turn on the lights",
-  "needs_confirmation": false
-}
-```
-
-### Integration Notes
-
-- **Backward compatible**: Existing `Transcribe()` method still works
-- **Enhanced method**: New `TranscribeWithConfidence()` provides detailed results
-- **Graceful fallback**: Low confidence gracefully handled without errors
-- **User experience**: Confirmation prompts improve interaction reliability
-
 ---
 
-## 🆕 Streaming Metrics API
+## Integration Notes
 
-The Streaming Metrics API provides real-time performance monitoring for the streaming LLM system.
+### HTTP/1.1 Streaming Transport
+- **Real-time communication**: Uses chunked transfer encoding for efficient streaming
+- **ESP32 optimized**: 4KB frame size limit for embedded device compatibility
+- **Stateless sessions**: No persistent storage, session state maintained in frame headers
+- **Binary efficiency**: Minimal overhead with 24-byte frame headers
 
-### Get Streaming Health Status
+### System Monitoring
+- **Health endpoints**: Use `/health` and `/api/capabilities` for service monitoring
+- **Performance tiers**: Automatic adaptation based on system capabilities
+- **Graceful degradation**: System automatically falls back to basic tier during issues
+- **Wake word arbitration**: Fair competition prevents single device dominance
 
-**GET** `/streaming/health`
-
-Returns the current health status of the streaming system.
-
-#### Example Request
-
-```bash
-curl "http://localhost:3000/api/streaming/health"
-```
-
-#### Example Response
-
-```json
-{
-  "parser_enabled": true,
-  "active_sessions": 2,
-  "active_pipelines": 1,
-  "metrics_enabled": true,
-  "overall_health": "healthy",
-  "last_health_check": "2025-01-15T10:30:45Z"
-}
-```
-
-### Get Streaming Performance Metrics
-
-**GET** `/streaming/metrics`
-
-Returns comprehensive performance metrics for the streaming system.
-
-#### Example Request
-
-```bash
-curl "http://localhost:3000/api/streaming/metrics"
-```
-
-#### Example Response
-
-```json
-{
-  "summary": {
-    "total_sessions": 150,
-    "completed_sessions": 145,
-    "interrupted_sessions": 5,
-    "average_first_token": "250ms",
-    "average_first_phrase": "500ms",
-    "average_completion": "2.1s",
-    "total_tokens": 45000,
-    "total_phrases": 1200,
-    "streaming_enabled": true,
-    "fallback_usage": 3,
-    "error_rate": 0.02,
-    "throughput_tokens_per_sec": 150.5,
-    "last_updated": "2025-01-15T10:30:45Z"
-  },
-  "recent_sessions": [
-    {
-      "session_id": "session-abc123",
-      "start_time": "2025-01-15T10:25:30Z",
-      "first_token_latency": "180ms",
-      "first_phrase_latency": "420ms",
-      "total_duration": "1.8s",
-      "token_count": 35,
-      "phrase_count": 4,
-      "buffer_overflows": 0,
-      "interrupt_count": 0,
-      "was_interrupted": false,
-      "completed_naturally": true,
-      "error_encountered": false,
-      "tokens_per_second": 19.4,
-      "quality_score": 0.95
-    }
-  ],
-  "performance_trends": {
-    "last_hour_sessions": 25,
-    "last_hour_avg_latency": "230ms",
-    "last_hour_error_rate": 0.01,
-    "trend_direction": "improving",
-    "latency_trend": [250, 240, 235, 230, 225, 220, 230, 235, 230, 225],
-    "throughput_trend": [145.2, 148.1, 150.5, 152.3, 149.8, 151.0, 150.5, 148.9, 150.1, 151.2]
-  },
-  "recommended_settings": {
-    "optimal_buffer_time": "1.8s",
-    "optimal_concurrency": 4,
-    "recommend_streaming": true,
-    "estimated_improvement": "15% faster response time",
-    "configuration_changes": [
-      "Increase audio concurrency to 4",
-      "Reduce buffer time to 1.8s for better responsiveness"
-    ]
-  },
-  "health_status": "healthy"
-}
-```
-
-### Get Active Streaming Sessions
-
-**GET** `/streaming/sessions`
-
-Returns information about currently active streaming sessions.
-
-#### Example Request
-
-```bash
-curl "http://localhost:3000/api/streaming/sessions"
-```
-
-#### Example Response
-
-```json
-{
-  "active_sessions": [
-    {
-      "id": "session-xyz789",
-      "created_at": "2025-01-15T10:28:15Z",
-      "duration": "2.5s",
-      "is_interrupted": false,
-      "cleanup_completed": false
-    }
-  ],
-  "metrics": {
-    "active_sessions": 1,
-    "interrupted_count": 0,
-    "average_duration": "2.1s",
-    "interrupt_reasons": {}
-  }
-}
-```
-
-### Export Streaming Metrics
-
-**GET** `/streaming/metrics/export`
-
-Exports streaming metrics in JSON format for external monitoring systems.
-
-#### Query Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `format` | string | `json` | Export format (`json`) |
-| `include_sessions` | boolean | `true` | Include individual session data |
-
-#### Example Request
-
-```bash
-curl "http://localhost:3000/api/streaming/metrics/export?include_sessions=false"
-```
-
-### Streaming Health Status Values
-
-| Status | Description |
-|--------|-------------|
-| `healthy` | All systems operating normally |
-| `warning` | Minor issues detected (>10% error rate or >2s latency) |
-| `critical` | Major issues (>20% error rate) |
-| `unknown` | Insufficient data or system initializing |
-| `disabled` | Streaming is disabled |
-
-### Integration Notes
-
-- **Real-time monitoring**: Metrics update in real-time as streaming sessions complete
-- **Performance optimization**: Use recommended settings to optimize streaming performance
-- **Health monitoring**: Monitor health status for early detection of issues
-- **External integration**: Export endpoints support integration with monitoring systems like Prometheus or Grafana
+### Development and Testing
+- **Intent processing**: Use `/api/intent/process` for testing text-based intent cascade
+- **Arbitration stats**: Monitor wake word competition fairness and performance
+- **Tier information**: Understand current system capabilities and feature availability
