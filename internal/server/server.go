@@ -25,6 +25,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/loqalabs/loqa-hub/internal/arbitration"
@@ -112,6 +113,7 @@ func (s *Server) configureComponents() {
 	s.streamTransport.RegisterFrameHandler(transport.FrameTypeWakeWord, s.handleWakeWordFrame)
 	s.streamTransport.RegisterFrameHandler(transport.FrameTypeAudioData, s.handleAudioFrame)
 	s.streamTransport.RegisterFrameHandler(transport.FrameTypeHeartbeat, s.handleHeartbeatFrame)
+	s.streamTransport.RegisterFrameHandler(transport.FrameTypeHandshake, s.handleHandshakeFrame)
 
 	logging.Sugar.Infow("🔧 Components configured",
 		"stt_url", s.cfg.STT.URL,
@@ -163,6 +165,7 @@ func (s *Server) routes() {
 
 	// New HTTP/1.1 streaming endpoints
 	s.mux.HandleFunc("/stream/puck", s.streamTransport.HandleStream)
+	s.mux.HandleFunc("/send/puck", s.streamTransport.HandleSend)
 	s.mux.HandleFunc("/api/capabilities", s.handleCapabilities)
 	s.mux.HandleFunc("/api/arbitration/stats", s.handleArbitrationStats)
 	s.mux.HandleFunc("/api/tier", s.handleTierInfo)
@@ -172,6 +175,7 @@ func (s *Server) routes() {
 
 	logging.Sugar.Infow("🌐 HTTP routes configured",
 		"streaming_endpoint", "/stream/puck",
+		"send_endpoint", "/send/puck",
 		"capabilities_endpoint", "/api/capabilities",
 		"arbitration_endpoint", "/api/arbitration/stats")
 }
@@ -333,6 +337,57 @@ func (s *Server) handleHeartbeatFrame(session *transport.StreamSession, frame *t
 	// Heartbeat frames are handled automatically by the transport layer
 	// This is just for logging/metrics
 	logging.Sugar.Debugw("Heartbeat received",
+		"session_id", session.ID,
+		"puck_id", session.PuckID)
+
+	return nil
+}
+
+// handleHandshakeFrame processes handshake frames for session establishment
+func (s *Server) handleHandshakeFrame(session *transport.StreamSession, frame *transport.Frame) error {
+	// Parse handshake data (format: "session:X;puck:Y")
+	handshakeData := string(frame.Data)
+	logging.Sugar.Infow("Handshake received",
+		"session_id", session.ID,
+		"puck_id", session.PuckID,
+		"handshake_data", handshakeData)
+
+	// Validate handshake data format and content
+	if handshakeData == "" {
+		return fmt.Errorf("empty handshake data")
+	}
+
+	// Parse the session and puck IDs from handshake data
+	parts := map[string]string{}
+	for _, part := range strings.Split(handshakeData, ";") {
+		if kv := strings.Split(part, ":"); len(kv) == 2 {
+			parts[kv[0]] = kv[1]
+		}
+	}
+
+	// Validate that the handshake session ID matches our session
+	if handshakeSessionID, exists := parts["session"]; exists {
+		if handshakeSessionID != session.ID {
+			logging.Sugar.Warnw("Handshake session ID mismatch",
+				"expected", session.ID,
+				"received", handshakeSessionID,
+				"puck_id", session.PuckID)
+			return fmt.Errorf("session ID mismatch in handshake")
+		}
+	}
+
+	// Validate that the handshake puck ID matches our session
+	if handshakePuckID, exists := parts["puck"]; exists {
+		if handshakePuckID != session.PuckID {
+			logging.Sugar.Warnw("Handshake puck ID mismatch",
+				"expected", session.PuckID,
+				"received", handshakePuckID,
+				"session_id", session.ID)
+			return fmt.Errorf("puck ID mismatch in handshake")
+		}
+	}
+
+	logging.Sugar.Infow("Handshake validated successfully",
 		"session_id", session.ID,
 		"puck_id", session.PuckID)
 

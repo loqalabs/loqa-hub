@@ -336,8 +336,8 @@ func TestFrameConstants(t *testing.T) {
 		t.Errorf("FrameMagic = 0x%08X, want 0x4C4F5141", FrameMagic)
 	}
 
-	if MaxFrameSize != 4096 {
-		t.Errorf("MaxFrameSize = %d, want 4096", MaxFrameSize)
+	if MaxFrameSize != 1536 {
+		t.Errorf("MaxFrameSize = %d, want 1536", MaxFrameSize)
 	}
 
 	if HeaderSize != 24 {
@@ -351,7 +351,7 @@ func TestFrameConstants(t *testing.T) {
 
 func TestFrameRoundTrip_LargeData(t *testing.T) {
 	// Test with various data sizes to ensure no corruption
-	sizes := []int{0, 1, 100, 1000, 2048, MaxDataSize}
+	sizes := []int{0, 1, 100, 1000, 1512, MaxDataSize}
 
 	for _, size := range sizes {
 		t.Run(fmt.Sprintf("size_%d", size), func(t *testing.T) {

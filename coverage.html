@@ -1,0 +1,3866 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>arbitration: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/loqalabs/loqa-hub/internal/arbitration/arbitrator.go (92.7%)</option>
+				
+				<option value="file1">github.com/loqalabs/loqa-hub/internal/config/config.go (88.2%)</option>
+				
+				<option value="file2">github.com/loqalabs/loqa-hub/internal/intent/cascade.go (90.9%)</option>
+				
+				<option value="file3">github.com/loqalabs/loqa-hub/internal/logging/logger.go (98.4%)</option>
+				
+				<option value="file4">github.com/loqalabs/loqa-hub/internal/security/security.go (100.0%)</option>
+				
+				<option value="file5">github.com/loqalabs/loqa-hub/internal/server/server.go (62.4%)</option>
+				
+				<option value="file6">github.com/loqalabs/loqa-hub/internal/tiers/detection.go (95.1%)</option>
+				
+				<option value="file7">github.com/loqalabs/loqa-hub/internal/transport/binary_frame.go (84.9%)</option>
+				
+				<option value="file8">github.com/loqalabs/loqa-hub/internal/transport/http_streaming.go (74.1%)</option>
+				
+				<option value="file9">github.com/loqalabs/loqa-hub/internal/transport/performance_monitor.go (93.5%)</option>
+				
+				<option value="file10">github.com/loqalabs/loqa-hub/internal/transport/resource_monitor.go (100.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">/*
+ * This file is part of Loqa (https://github.com/loqalabs/loqa).
+ * Copyright (C) 2025 Loqa Labs
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.
+ */
+
+package arbitration
+
+import (
+        "encoding/json"
+        "fmt"
+        "sync"
+        "time"
+
+        "github.com/loqalabs/loqa-hub/internal/logging"
+        "github.com/loqalabs/loqa-hub/internal/transport"
+)
+
+// ArbitrationWindowDuration defines the time window for collecting wake word detections
+const ArbitrationWindowDuration = 500 * time.Millisecond
+
+// WakeWordDetection represents a wake word detection from a puck
+type WakeWordDetection struct {
+        PuckID       string    `json:"puck_id"`
+        SessionID    string    `json:"session_id"`
+        Confidence   float64   `json:"confidence"`
+        Timestamp    time.Time `json:"timestamp"`
+        AudioLevel   float64   `json:"audio_level"`
+        NoiseLevel   float64   `json:"noise_level"`
+        DistanceHint float64   `json:"distance_hint"` // Optional distance estimation
+}
+
+// ArbitrationResult represents the outcome of arbitration
+type ArbitrationResult struct {
+        WinnerPuckID    string              `json:"winner_puck_id"`
+        WinnerScore     float64             `json:"winner_score"`
+        AllDetections   []WakeWordDetection `json:"all_detections"`
+        ArbitrationTime time.Duration       `json:"arbitration_time_ms"`
+        DecisionReason  string              `json:"decision_reason"`
+}
+
+// Arbitrator handles multi-puck wake word arbitration
+type Arbitrator struct {
+        // Current arbitration session
+        mutex             sync.RWMutex
+        activeWindow      *ArbitrationWindow
+        pendingDetections []WakeWordDetection
+        windowTimer       *time.Timer
+
+        // Configuration
+        confidenceWeight   float64       // Weight for confidence score (0.0-1.0)
+        snrWeight          float64       // Weight for signal-to-noise ratio
+        proximityWeight    float64       // Weight for proximity hints
+        minConfidence      float64       // Minimum confidence to participate
+        maxWindowExtension time.Duration // Max time to extend window for late arrivals
+
+        // Callbacks
+        onArbitrationComplete func(*ArbitrationResult)
+
+        // Statistics
+        stats ArbitrationStats
+}
+
+// ArbitrationWindow tracks an active arbitration session
+type ArbitrationWindow struct {
+        StartTime      time.Time
+        ExpectedPucks  map[string]bool // Pucks that should participate
+        ReceivedFrom   map[string]bool // Pucks we've received from
+        WindowExtended bool            // Whether we've extended the window
+}
+
+// ArbitrationStats tracks arbitration performance metrics
+type ArbitrationStats struct {
+        TotalArbitrations      int64            `json:"total_arbitrations"`
+        AverageWindowTime      time.Duration    `json:"average_window_time"`
+        SinglePuckDecisions    int64            `json:"single_puck_decisions"`
+        MultiPuckDecisions     int64            `json:"multi_puck_decisions"`
+        WindowExtensions       int64            `json:"window_extensions"`
+        ConfidenceDistribution map[string]int64 `json:"confidence_distribution"`
+}
+
+// NewArbitrator creates a new arbitration system
+func NewArbitrator() *Arbitrator <span class="cov8" title="1">{
+        return &amp;Arbitrator{
+                confidenceWeight:   0.5,
+                snrWeight:          0.3,
+                proximityWeight:    0.2,
+                minConfidence:      0.3, // Require 30% confidence minimum
+                maxWindowExtension: 200 * time.Millisecond,
+                stats: ArbitrationStats{
+                        ConfidenceDistribution: make(map[string]int64),
+                },
+        }
+}</span>
+
+// ProcessWakeWordDetection handles incoming wake word detections
+func (a *Arbitrator) ProcessWakeWordDetection(detection WakeWordDetection) error <span class="cov8" title="1">{
+        a.mutex.Lock()
+        defer a.mutex.Unlock()
+
+        // Validate detection
+        if detection.Confidence &lt; a.minConfidence </span><span class="cov8" title="1">{
+                logging.Sugar.Debugw("Wake word detection below minimum confidence",
+                        "puck_id", detection.PuckID,
+                        "confidence", detection.Confidence,
+                        "min_confidence", a.minConfidence)
+                return nil
+        }</span>
+
+        <span class="cov8" title="1">logging.Sugar.Infow("Wake word detection received",
+                "puck_id", detection.PuckID,
+                "confidence", detection.Confidence,
+                "audio_level", detection.AudioLevel,
+                "noise_level", detection.NoiseLevel)
+
+        // Check if we're in an active arbitration window
+        if a.activeWindow == nil </span><span class="cov8" title="1">{
+                // Start new arbitration window
+                a.startArbitrationWindow(detection)
+        }</span> else<span class="cov8" title="1"> {
+                // Add to existing window if within time limit
+                elapsed := time.Since(a.activeWindow.StartTime)
+                if elapsed &lt;= ArbitrationWindowDuration+a.maxWindowExtension </span><span class="cov8" title="1">{
+                        a.addDetectionToWindow(detection)
+                }</span> else<span class="cov0" title="0"> {
+                        // Window expired, start new one
+                        logging.Sugar.Warnw("Detection received after window expired",
+                                "puck_id", detection.PuckID,
+                                "elapsed", elapsed)
+                        a.finalizeArbitration()
+                        a.startArbitrationWindow(detection)
+                }</span>
+        }
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+// startArbitrationWindow begins a new arbitration window
+func (a *Arbitrator) startArbitrationWindow(firstDetection WakeWordDetection) <span class="cov8" title="1">{
+        a.activeWindow = &amp;ArbitrationWindow{
+                StartTime:     time.Now(),
+                ExpectedPucks: make(map[string]bool),
+                ReceivedFrom:  make(map[string]bool),
+        }
+
+        a.pendingDetections = []WakeWordDetection{firstDetection}
+        a.activeWindow.ReceivedFrom[firstDetection.PuckID] = true
+
+        // Set timer for window expiration
+        a.windowTimer = time.AfterFunc(ArbitrationWindowDuration, func() </span><span class="cov8" title="1">{
+                a.mutex.Lock()
+                defer a.mutex.Unlock()
+                a.finalizeArbitration()
+        }</span>)
+
+        <span class="cov8" title="1">logging.Sugar.Infow("Started arbitration window",
+                "start_time", a.activeWindow.StartTime,
+                "first_puck", firstDetection.PuckID,
+                "window_duration", ArbitrationWindowDuration)</span>
+}
+
+// addDetectionToWindow adds a detection to the current window
+func (a *Arbitrator) addDetectionToWindow(detection WakeWordDetection) <span class="cov8" title="1">{
+        // Check for duplicate from same puck
+        for _, existing := range a.pendingDetections </span><span class="cov8" title="1">{
+                if existing.PuckID == detection.PuckID </span><span class="cov8" title="1">{
+                        // Update with higher confidence detection
+                        if detection.Confidence &gt; existing.Confidence </span><span class="cov8" title="1">{
+                                logging.Sugar.Infow("Updating detection with higher confidence",
+                                        "puck_id", detection.PuckID,
+                                        "old_confidence", existing.Confidence,
+                                        "new_confidence", detection.Confidence)
+
+                                // Replace the existing detection
+                                for i, d := range a.pendingDetections </span><span class="cov8" title="1">{
+                                        if d.PuckID == detection.PuckID </span><span class="cov8" title="1">{
+                                                a.pendingDetections[i] = detection
+                                                break</span>
+                                        }
+                                }
+                        }
+                        <span class="cov8" title="1">return</span>
+                }
+        }
+
+        // Add new detection
+        <span class="cov8" title="1">a.pendingDetections = append(a.pendingDetections, detection)
+        a.activeWindow.ReceivedFrom[detection.PuckID] = true
+
+        logging.Sugar.Infow("Added detection to arbitration window",
+                "puck_id", detection.PuckID,
+                "total_detections", len(a.pendingDetections))</span>
+}
+
+// finalizeArbitration completes the arbitration and selects winner
+func (a *Arbitrator) finalizeArbitration() <span class="cov8" title="1">{
+        if a.activeWindow == nil || len(a.pendingDetections) == 0 </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">startTime := time.Now()
+
+        // Stop the timer
+        if a.windowTimer != nil </span><span class="cov8" title="1">{
+                a.windowTimer.Stop()
+        }</span>
+
+        // Calculate scores for each detection
+        <span class="cov8" title="1">scoredDetections := make([]ScoredDetection, len(a.pendingDetections))
+        for i, detection := range a.pendingDetections </span><span class="cov8" title="1">{
+                score := a.calculateScore(detection)
+                scoredDetections[i] = ScoredDetection{
+                        Detection: detection,
+                        Score:     score,
+                }
+        }</span>
+
+        // Find winner (highest score)
+        <span class="cov8" title="1">winner := scoredDetections[0]
+        for _, scored := range scoredDetections[1:] </span><span class="cov8" title="1">{
+                if scored.Score &gt; winner.Score </span><span class="cov8" title="1">{
+                        winner = scored
+                }</span>
+        }
+
+        // Create result
+        <span class="cov8" title="1">result := &amp;ArbitrationResult{
+                WinnerPuckID:    winner.Detection.PuckID,
+                WinnerScore:     winner.Score,
+                AllDetections:   a.pendingDetections,
+                ArbitrationTime: time.Since(startTime),
+                DecisionReason:  a.getDecisionReason(scoredDetections, winner),
+        }
+
+        // Update statistics
+        a.updateStats(result)
+
+        logging.Sugar.Infow("Arbitration completed",
+                "winner_puck", result.WinnerPuckID,
+                "winner_score", result.WinnerScore,
+                "total_detections", len(result.AllDetections),
+                "decision_time", result.ArbitrationTime,
+                "reason", result.DecisionReason)
+
+        // Clear state
+        a.activeWindow = nil
+        a.pendingDetections = nil
+
+        // Notify callback
+        if a.onArbitrationComplete != nil </span><span class="cov8" title="1">{
+                go a.onArbitrationComplete(result)
+        }</span>
+}
+
+// ScoredDetection pairs a detection with its calculated score
+type ScoredDetection struct {
+        Detection WakeWordDetection
+        Score     float64
+}
+
+// calculateScore computes the arbitration score for a detection
+func (a *Arbitrator) calculateScore(detection WakeWordDetection) float64 <span class="cov8" title="1">{
+        // Base confidence score
+        confidenceScore := detection.Confidence * a.confidenceWeight
+
+        // Signal-to-noise ratio score
+        snr := 1.0
+        if detection.NoiseLevel &gt; 0 </span><span class="cov8" title="1">{
+                snr = detection.AudioLevel / detection.NoiseLevel
+        }</span>
+        <span class="cov8" title="1">snrScore := normalizeScore(snr, 0.5, 10.0) * a.snrWeight
+
+        // Proximity score (inverse of distance hint)
+        proximityScore := 0.0
+        if detection.DistanceHint &gt; 0 </span><span class="cov8" title="1">{
+                // Higher score for lower distance
+                proximityScore = (1.0 / (1.0 + detection.DistanceHint)) * a.proximityWeight
+        }</span>
+
+        <span class="cov8" title="1">totalScore := confidenceScore + snrScore + proximityScore
+
+        logging.Sugar.Debugw("Calculated arbitration score",
+                "puck_id", detection.PuckID,
+                "confidence_score", confidenceScore,
+                "snr_score", snrScore,
+                "proximity_score", proximityScore,
+                "total_score", totalScore)
+
+        return totalScore</span>
+}
+
+// normalizeScore normalizes a value to 0-1 range given min/max bounds
+func normalizeScore(value, min, max float64) float64 <span class="cov8" title="1">{
+        if value &lt;= min </span><span class="cov8" title="1">{
+                return 0.0
+        }</span>
+        <span class="cov8" title="1">if value &gt;= max </span><span class="cov8" title="1">{
+                return 1.0
+        }</span>
+        <span class="cov8" title="1">return (value - min) / (max - min)</span>
+}
+
+// getDecisionReason generates a human-readable reason for the arbitration decision
+func (a *Arbitrator) getDecisionReason(scored []ScoredDetection, winner ScoredDetection) string <span class="cov8" title="1">{
+        if len(scored) == 1 </span><span class="cov8" title="1">{
+                return "Single puck detection"
+        }</span>
+
+        // Find the primary factor that led to victory
+        <span class="cov8" title="1">if winner.Detection.Confidence &gt;= 0.9 </span><span class="cov8" title="1">{
+                return "High confidence detection"
+        }</span>
+
+        // Check if significantly better SNR
+        <span class="cov8" title="1">for _, other := range scored </span><span class="cov8" title="1">{
+                if other.Detection.PuckID != winner.Detection.PuckID </span><span class="cov8" title="1">{
+                        winnerSNR := winner.Detection.AudioLevel / winner.Detection.NoiseLevel
+                        otherSNR := other.Detection.AudioLevel / other.Detection.NoiseLevel
+                        if winnerSNR &gt; otherSNR*1.5 </span><span class="cov8" title="1">{
+                                return "Superior audio quality"
+                        }</span>
+                }
+        }
+
+        <span class="cov8" title="1">return "Best overall score"</span>
+}
+
+// updateStats updates arbitration statistics
+func (a *Arbitrator) updateStats(result *ArbitrationResult) <span class="cov8" title="1">{
+        a.stats.TotalArbitrations++
+
+        // Update average window time
+        total := time.Duration(a.stats.TotalArbitrations)
+        a.stats.AverageWindowTime = (a.stats.AverageWindowTime*(total-1) + result.ArbitrationTime) / total
+
+        // Count single vs multi-puck decisions
+        if len(result.AllDetections) == 1 </span><span class="cov8" title="1">{
+                a.stats.SinglePuckDecisions++
+        }</span> else<span class="cov8" title="1"> {
+                a.stats.MultiPuckDecisions++
+        }</span>
+
+        // Update confidence distribution
+        <span class="cov8" title="1">bucket := fmt.Sprintf("%.1f", result.WinnerScore)
+        a.stats.ConfidenceDistribution[bucket]++</span>
+}
+
+// SetArbitrationCompleteCallback sets the callback for when arbitration completes
+func (a *Arbitrator) SetArbitrationCompleteCallback(callback func(*ArbitrationResult)) <span class="cov8" title="1">{
+        a.onArbitrationComplete = callback
+}</span>
+
+// GetStats returns current arbitration statistics
+func (a *Arbitrator) GetStats() ArbitrationStats <span class="cov8" title="1">{
+        a.mutex.RLock()
+        defer a.mutex.RUnlock()
+        return a.stats
+}</span>
+
+// SerializeWakeWordDetection converts a wake word detection to binary frame data
+func SerializeWakeWordDetection(detection WakeWordDetection) ([]byte, error) <span class="cov8" title="1">{
+        data, err := json.Marshal(detection)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to marshal wake word detection: %w", err)
+        }</span>
+        <span class="cov8" title="1">return data, nil</span>
+}
+
+// DeserializeWakeWordDetection converts binary frame data to wake word detection
+func DeserializeWakeWordDetection(data []byte) (*WakeWordDetection, error) <span class="cov8" title="1">{
+        var detection WakeWordDetection
+        if err := json.Unmarshal(data, &amp;detection); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to unmarshal wake word detection: %w", err)
+        }</span>
+        <span class="cov8" title="1">return &amp;detection, nil</span>
+}
+
+// CreateWakeWordFrame creates a binary frame for wake word detection
+func CreateWakeWordFrame(detection WakeWordDetection, sessionID uint32, sequence uint32) (*transport.Frame, error) <span class="cov8" title="1">{
+        data, err := SerializeWakeWordDetection(detection)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">timestamp := time.Now().UnixMicro()
+        if timestamp &lt; 0 </span><span class="cov0" title="0">{
+                timestamp = 0
+        }</span>
+        <span class="cov8" title="1">return transport.NewFrame(
+                transport.FrameTypeWakeWord,
+                sessionID,
+                sequence,
+                uint64(timestamp), //nolint:gosec // G115: Safe conversion, timestamp is validated above
+                data,
+        ), nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">/*
+ * This file is part of Loqa (https://github.com/loqalabs/loqa).
+ * Copyright (C) 2025 Loqa Labs
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.
+ */
+
+package config
+
+import (
+        "fmt"
+        "os"
+        "strconv"
+        "time"
+)
+
+// Config holds all configuration for the Loqa hub
+type Config struct {
+        Server    ServerConfig
+        STT       STTConfig
+        TTS       TTSConfig
+        Streaming StreamingConfig
+        Logging   LoggingConfig
+        NATS      NATSConfig
+        Privacy   PrivacyConfig
+}
+
+// ServerConfig holds server-related configuration
+type ServerConfig struct {
+        Host         string
+        Port         int
+        ReadTimeout  time.Duration
+        WriteTimeout time.Duration
+}
+
+// STTConfig holds Speech-to-Text service configuration
+type STTConfig struct {
+        URL         string // REST API URL for OpenAI-compatible STT service
+        Language    string
+        Temperature float32
+        MaxTokens   int
+}
+
+// TTSConfig holds Text-to-Speech service configuration
+type TTSConfig struct {
+        URL             string        // REST API URL for OpenAI-compatible TTS service
+        Voice           string        // Default voice to use (e.g., "af_bella")
+        Speed           float32       // Speech speed (1.0 = normal)
+        ResponseFormat  string        // Audio format (mp3, wav, opus, flac)
+        Normalize       bool          // Enable text normalization
+        MaxConcurrent   int           // Maximum concurrent TTS requests
+        Timeout         time.Duration // Request timeout
+        FallbackEnabled bool          // Enable fallback to legacy TTS if available
+}
+
+// StreamingConfig holds real-time streaming configuration
+type StreamingConfig struct {
+        Enabled             bool          // Enable streaming LLM responses
+        OllamaURL           string        // Ollama API URL for streaming
+        Model               string        // LLM model to use for streaming
+        MaxBufferTime       time.Duration // Maximum time to buffer tokens before synthesis
+        MaxTokensPerPhrase  int           // Maximum tokens to buffer per phrase
+        AudioConcurrency    int           // Number of parallel TTS synthesis workers
+        VisualFeedbackDelay time.Duration // Delay before showing visual tokens (for smoothness)
+        InterruptTimeout    time.Duration // Timeout for graceful stream interruption
+        FallbackEnabled     bool          // Enable fallback to non-streaming mode on errors
+        MetricsEnabled      bool          // Enable streaming performance metrics
+}
+
+// LoggingConfig holds logging configuration
+type LoggingConfig struct {
+        Level  string
+        Format string
+}
+
+// NATSConfig holds NATS messaging configuration
+type NATSConfig struct {
+        URL           string
+        Subject       string
+        MaxReconnect  int
+        ReconnectWait time.Duration
+}
+
+// PrivacyConfig holds privacy and data retention configuration
+type PrivacyConfig struct {
+        // LocalOnly ensures all processing stays local (no cloud services)
+        LocalOnly bool
+
+        // StatelessMode disables all persistent storage (fully stateless)
+        StatelessMode bool
+}
+
+// Load loads configuration from environment variables with defaults
+func Load() (*Config, error) <span class="cov8" title="1">{
+        config := &amp;Config{
+                Server: ServerConfig{
+                        Host:         getEnvString("LOQA_HOST", "0.0.0.0"),
+                        Port:         getEnvInt("LOQA_PORT", 3000),
+                        ReadTimeout:  getEnvDuration("LOQA_READ_TIMEOUT", 30*time.Second),
+                        WriteTimeout: getEnvDuration("LOQA_WRITE_TIMEOUT", 30*time.Second),
+                },
+                STT: STTConfig{
+                        URL:         getEnvString("STT_URL", "http://stt:8000"),
+                        Language:    getEnvString("STT_LANGUAGE", "en"),
+                        Temperature: getEnvFloat32("STT_TEMPERATURE", 0.0),
+                        MaxTokens:   getEnvInt("STT_MAX_TOKENS", 224),
+                },
+                TTS: TTSConfig{
+                        URL:             getEnvString("TTS_URL", "http://localhost:8880/v1"),
+                        Voice:           getEnvString("TTS_VOICE", "af_bella"),
+                        Speed:           getEnvFloat32("TTS_SPEED", 1.0),
+                        ResponseFormat:  getEnvString("TTS_FORMAT", "wav"),
+                        Normalize:       getEnvBool("TTS_NORMALIZE", true),
+                        MaxConcurrent:   getEnvInt("TTS_MAX_CONCURRENT", 10),
+                        Timeout:         getEnvDuration("TTS_TIMEOUT", 10*time.Second),
+                        FallbackEnabled: getEnvBool("TTS_FALLBACK_ENABLED", true),
+                },
+                Streaming: StreamingConfig{
+                        Enabled:             getEnvBool("STREAMING_ENABLED", false), // Default disabled for gradual rollout
+                        OllamaURL:           getEnvString("OLLAMA_URL", "http://ollama:11434"),
+                        Model:               getEnvString("STREAMING_MODEL", "llama3.2:3b"),
+                        MaxBufferTime:       getEnvDuration("STREAMING_MAX_BUFFER_TIME", 2*time.Second),
+                        MaxTokensPerPhrase:  getEnvInt("STREAMING_MAX_TOKENS_PER_PHRASE", 50),
+                        AudioConcurrency:    getEnvInt("STREAMING_AUDIO_CONCURRENCY", 3),
+                        VisualFeedbackDelay: getEnvDuration("STREAMING_VISUAL_DELAY", 50*time.Millisecond),
+                        InterruptTimeout:    getEnvDuration("STREAMING_INTERRUPT_TIMEOUT", 500*time.Millisecond),
+                        FallbackEnabled:     getEnvBool("STREAMING_FALLBACK_ENABLED", true),
+                        MetricsEnabled:      getEnvBool("STREAMING_METRICS_ENABLED", true),
+                },
+                Logging: LoggingConfig{
+                        Level:  getEnvString("LOG_LEVEL", "info"),
+                        Format: getEnvString("LOG_FORMAT", "json"),
+                },
+                NATS: NATSConfig{
+                        URL:           getEnvString("NATS_URL", "nats://localhost:4222"),
+                        Subject:       getEnvString("NATS_SUBJECT", "loqa.commands"),
+                        MaxReconnect:  getEnvInt("NATS_MAX_RECONNECT", 10),
+                        ReconnectWait: getEnvDuration("NATS_RECONNECT_WAIT", 2*time.Second),
+                },
+                Privacy: PrivacyConfig{
+                        LocalOnly:     getEnvBool("LOQA_LOCAL_ONLY", true),     // Default to local-only
+                        StatelessMode: getEnvBool("LOQA_STATELESS_MODE", true), // Default to stateless
+                },
+        }
+
+        if err := config.validate(); err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("invalid configuration: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">return config, nil</span>
+}
+
+// validate checks if the configuration is valid
+func (c *Config) validate() error <span class="cov8" title="1">{
+        if c.Server.Port &lt;= 0 || c.Server.Port &gt; 65535 </span><span class="cov8" title="1">{
+                return fmt.Errorf("invalid server port: %d", c.Server.Port)
+        }</span>
+
+        <span class="cov8" title="1">if c.STT.URL == "" </span><span class="cov0" title="0">{
+                return fmt.Errorf("STT URL must be provided")
+        }</span>
+
+        <span class="cov8" title="1">if c.TTS.URL == "" </span><span class="cov0" title="0">{
+                return fmt.Errorf("TTS URL must be provided")
+        }</span>
+
+        <span class="cov8" title="1">if c.TTS.MaxConcurrent &lt;= 0 </span><span class="cov0" title="0">{
+                return fmt.Errorf("TTS max concurrent must be positive: %d", c.TTS.MaxConcurrent)
+        }</span>
+
+        <span class="cov8" title="1">if c.TTS.Speed &lt;= 0 </span><span class="cov0" title="0">{
+                return fmt.Errorf("TTS speed must be positive: %f", c.TTS.Speed)
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+// Helper functions for environment variable parsing
+func getEnvString(key, defaultValue string) string <span class="cov8" title="1">{
+        if value := os.Getenv(key); value != "" </span><span class="cov8" title="1">{
+                return value
+        }</span>
+        <span class="cov8" title="1">return defaultValue</span>
+}
+
+func getEnvInt(key string, defaultValue int) int <span class="cov8" title="1">{
+        if value := os.Getenv(key); value != "" </span><span class="cov8" title="1">{
+                if intValue, err := strconv.Atoi(value); err == nil </span><span class="cov8" title="1">{
+                        return intValue
+                }</span>
+        }
+        <span class="cov8" title="1">return defaultValue</span>
+}
+
+func getEnvFloat32(key string, defaultValue float32) float32 <span class="cov8" title="1">{
+        if value := os.Getenv(key); value != "" </span><span class="cov8" title="1">{
+                if floatValue, err := strconv.ParseFloat(value, 32); err == nil </span><span class="cov8" title="1">{
+                        return float32(floatValue)
+                }</span>
+        }
+        <span class="cov8" title="1">return defaultValue</span>
+}
+
+func getEnvDuration(key string, defaultValue time.Duration) time.Duration <span class="cov8" title="1">{
+        if value := os.Getenv(key); value != "" </span><span class="cov8" title="1">{
+                if duration, err := time.ParseDuration(value); err == nil </span><span class="cov8" title="1">{
+                        return duration
+                }</span>
+        }
+        <span class="cov8" title="1">return defaultValue</span>
+}
+
+func getEnvBool(key string, defaultValue bool) bool <span class="cov8" title="1">{
+        if value := os.Getenv(key); value != "" </span><span class="cov8" title="1">{
+                if boolValue, err := strconv.ParseBool(value); err == nil </span><span class="cov8" title="1">{
+                        return boolValue
+                }</span>
+        }
+        <span class="cov8" title="1">return defaultValue</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">/*
+ * This file is part of Loqa (https://github.com/loqalabs/loqa).
+ * Copyright (C) 2025 Loqa Labs
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.
+ */
+
+package intent
+
+import (
+        "context"
+        "fmt"
+        "regexp"
+        "strings"
+        "time"
+
+        "github.com/loqalabs/loqa-hub/internal/logging"
+)
+
+// Intent represents a parsed voice command intent
+type Intent struct {
+        Type           IntentType             `json:"type"`
+        Confidence     float64                `json:"confidence"`
+        Entities       map[string]interface{} `json:"entities"`
+        RawText        string                 `json:"raw_text"`
+        Source         ProcessorType          `json:"source"`
+        ProcessingTime time.Duration          `json:"processing_time"`
+}
+
+// IntentType represents different categories of intents
+type IntentType string
+
+const (
+        IntentUnknown       IntentType = "unknown"
+        IntentLightControl  IntentType = "light_control"
+        IntentMediaControl  IntentType = "media_control"
+        IntentWeatherQuery  IntentType = "weather_query"
+        IntentTimeQuery     IntentType = "time_query"
+        IntentVolumeControl IntentType = "volume_control"
+        IntentSystemControl IntentType = "system_control"
+        IntentSmartHome     IntentType = "smart_home"
+        IntentConversation  IntentType = "conversation"
+)
+
+// ProcessorType identifies which processor handled the intent
+type ProcessorType string
+
+const (
+        ProcessorReflex ProcessorType = "reflex"
+        ProcessorLLM    ProcessorType = "llm"
+        ProcessorCloud  ProcessorType = "cloud"
+)
+
+// IntentProcessor interface for different processing stages
+type IntentProcessor interface {
+        ProcessIntent(ctx context.Context, text string) (*Intent, error)
+        CanHandle(text string) bool
+        GetConfidenceThreshold() float64
+}
+
+// CascadeProcessor implements the Reflex → LLM → Cloud cascade
+type CascadeProcessor struct {
+        reflexProcessor ReflexProcessor
+        llmProcessor    LLMProcessor
+        cloudProcessor  CloudProcessor
+
+        // Configuration
+        reflexThreshold float64
+        llmThreshold    float64
+        enableCloud     bool
+        cascadeTimeout  time.Duration
+}
+
+// ReflexProcessor handles immediate pattern-based responses
+type ReflexProcessor struct {
+        patterns map[IntentType][]*regexp.Regexp
+}
+
+// LLMProcessor handles local LLM-based intent parsing
+type LLMProcessor struct {
+        ollamaURL string
+        model     string
+        timeout   time.Duration
+}
+
+// CloudProcessor handles cloud-based intent parsing (fallback)
+type CloudProcessor struct {
+        enabled bool
+        timeout time.Duration
+}
+
+// NewCascadeProcessor creates a new intent cascade processor
+func NewCascadeProcessor(ollamaURL, model string) *CascadeProcessor <span class="cov8" title="1">{
+        cp := &amp;CascadeProcessor{
+                reflexProcessor: *NewReflexProcessor(),
+                llmProcessor: LLMProcessor{
+                        ollamaURL: ollamaURL,
+                        model:     model,
+                        timeout:   5 * time.Second,
+                },
+                cloudProcessor: CloudProcessor{
+                        enabled: false, // Disabled by default for privacy
+                        timeout: 10 * time.Second,
+                },
+                reflexThreshold: 0.8,
+                llmThreshold:    0.7,
+                enableCloud:     false,
+                cascadeTimeout:  15 * time.Second,
+        }
+
+        return cp
+}</span>
+
+// ProcessIntent executes the full cascade to parse intent
+func (cp *CascadeProcessor) ProcessIntent(ctx context.Context, text string) (*Intent, error) <span class="cov8" title="1">{
+        startTime := time.Now()
+
+        // Create context with timeout
+        cascadeCtx, cancel := context.WithTimeout(ctx, cp.cascadeTimeout)
+        defer cancel()
+
+        logging.Sugar.Infow("Starting intent cascade", "text", text)
+
+        // Stage 1: Reflex Processing (immediate patterns)
+        if intent, err := cp.reflexProcessor.ProcessIntent(cascadeCtx, text); err == nil &amp;&amp; intent.Confidence &gt;= cp.reflexThreshold </span><span class="cov8" title="1">{
+                intent.ProcessingTime = time.Since(startTime)
+                logging.Sugar.Infow("Intent resolved by reflex processor",
+                        "type", intent.Type,
+                        "confidence", intent.Confidence,
+                        "processing_time", intent.ProcessingTime)
+                return intent, nil
+        }</span>
+
+        // Stage 2: LLM Processing (local AI)
+        <span class="cov8" title="1">if intent, err := cp.llmProcessor.ProcessIntent(cascadeCtx, text); err == nil &amp;&amp; intent.Confidence &gt;= cp.llmThreshold </span><span class="cov8" title="1">{
+                intent.ProcessingTime = time.Since(startTime)
+                logging.Sugar.Infow("Intent resolved by LLM processor",
+                        "type", intent.Type,
+                        "confidence", intent.Confidence,
+                        "processing_time", intent.ProcessingTime)
+                return intent, nil
+        }</span>
+
+        // Stage 3: Cloud Processing (if enabled)
+        <span class="cov8" title="1">if cp.enableCloud &amp;&amp; cp.cloudProcessor.enabled </span><span class="cov0" title="0">{
+                if intent, err := cp.cloudProcessor.ProcessIntent(cascadeCtx, text); err == nil </span><span class="cov0" title="0">{
+                        intent.ProcessingTime = time.Since(startTime)
+                        logging.Sugar.Infow("Intent resolved by cloud processor",
+                                "type", intent.Type,
+                                "confidence", intent.Confidence,
+                                "processing_time", intent.ProcessingTime)
+                        return intent, nil
+                }</span>
+        }
+
+        // Fallback: Unknown intent
+        <span class="cov8" title="1">fallbackIntent := &amp;Intent{
+                Type:           IntentUnknown,
+                Confidence:     0.0,
+                Entities:       make(map[string]interface{}),
+                RawText:        text,
+                Source:         ProcessorReflex,
+                ProcessingTime: time.Since(startTime),
+        }
+
+        logging.Sugar.Warnw("Intent cascade failed to classify",
+                "text", text,
+                "processing_time", fallbackIntent.ProcessingTime)
+
+        return fallbackIntent, nil</span>
+}
+
+// NewReflexProcessor creates a new reflex processor with pattern matching
+func NewReflexProcessor() *ReflexProcessor <span class="cov8" title="1">{
+        rp := &amp;ReflexProcessor{
+                patterns: make(map[IntentType][]*regexp.Regexp),
+        }
+
+        // Light Control Patterns
+        rp.addPatterns(IntentLightControl, []string{
+                `(?i)turn\s+(on|off)\s+(?:the\s+)?lights?`,
+                `(?i)(dim|brighten)\s+(?:the\s+)?lights?`,
+                `(?i)lights?\s+(on|off)`,
+                `(?i)set\s+lights?\s+to\s+(\d+)%?`,
+        })
+
+        // Media Control Patterns
+        rp.addPatterns(IntentMediaControl, []string{
+                `(?i)(play|pause|stop)\s+music`,
+                `(?i)(next|previous)\s+song`,
+                `(?i)(skip|back)`,
+                `(?i)play\s+(.+)`,
+        })
+
+        // Volume Control Patterns
+        rp.addPatterns(IntentVolumeControl, []string{
+                `(?i)volume\s+(up|down)`,
+                `(?i)(increase|decrease)\s+volume`,
+                `(?i)set\s+volume\s+to\s+(\d+)`,
+                `(?i)(mute|unmute)`,
+        })
+
+        // Time Query Patterns
+        rp.addPatterns(IntentTimeQuery, []string{
+                `(?i)what\s+time\s+is\s+it`,
+                `(?i)current\s+time`,
+                `(?i)tell\s+me\s+the\s+time`,
+        })
+
+        // Weather Query Patterns
+        rp.addPatterns(IntentWeatherQuery, []string{
+                `(?i)what'?s\s+the\s+weather`,
+                `(?i)weather\s+forecast`,
+                `(?i)how'?s\s+the\s+weather`,
+                `(?i)is\s+it\s+(raining|sunny|cloudy)`,
+        })
+
+        return rp
+}</span>
+
+// addPatterns compiles and adds regex patterns for an intent type
+func (rp *ReflexProcessor) addPatterns(intentType IntentType, patterns []string) <span class="cov8" title="1">{
+        compiled := make([]*regexp.Regexp, len(patterns))
+        for i, pattern := range patterns </span><span class="cov8" title="1">{
+                compiled[i] = regexp.MustCompile(pattern)
+        }</span>
+        <span class="cov8" title="1">rp.patterns[intentType] = compiled</span>
+}
+
+// ProcessIntent attempts to match text against reflex patterns
+func (rp *ReflexProcessor) ProcessIntent(ctx context.Context, text string) (*Intent, error) <span class="cov8" title="1">{
+        text = strings.TrimSpace(text)
+
+        for intentType, patterns := range rp.patterns </span><span class="cov8" title="1">{
+                for _, pattern := range patterns </span><span class="cov8" title="1">{
+                        if matches := pattern.FindStringSubmatch(text); matches != nil </span><span class="cov8" title="1">{
+                                entities := make(map[string]interface{})
+
+                                // Extract entities from capture groups
+                                if len(matches) &gt; 1 </span><span class="cov8" title="1">{
+                                        switch intentType </span>{
+                                        case IntentLightControl:<span class="cov8" title="1">
+                                                if len(matches) &gt; 1 </span><span class="cov8" title="1">{
+                                                        entities["action"] = matches[1]
+                                                }</span>
+                                        case IntentMediaControl:<span class="cov8" title="1">
+                                                if len(matches) &gt; 1 </span><span class="cov8" title="1">{
+                                                        entities["action"] = matches[1]
+                                                }</span>
+                                                <span class="cov8" title="1">if len(matches) &gt; 2 &amp;&amp; matches[2] != "" </span><span class="cov0" title="0">{
+                                                        entities["target"] = matches[2]
+                                                }</span>
+                                        case IntentVolumeControl:<span class="cov8" title="1">
+                                                if len(matches) &gt; 1 </span><span class="cov8" title="1">{
+                                                        entities["action"] = matches[1]
+                                                }</span>
+                                        }
+                                }
+
+                                <span class="cov8" title="1">return &amp;Intent{
+                                        Type:       intentType,
+                                        Confidence: 0.95, // High confidence for exact pattern matches
+                                        Entities:   entities,
+                                        RawText:    text,
+                                        Source:     ProcessorReflex,
+                                }, nil</span>
+                        }
+                }
+        }
+
+        <span class="cov8" title="1">return nil, fmt.Errorf("no reflex pattern matched")</span>
+}
+
+// CanHandle checks if reflex processor can handle the text
+func (rp *ReflexProcessor) CanHandle(text string) bool <span class="cov8" title="1">{
+        intent, _ := rp.ProcessIntent(context.Background(), text)
+        return intent != nil
+}</span>
+
+// GetConfidenceThreshold returns the confidence threshold
+func (rp *ReflexProcessor) GetConfidenceThreshold() float64 <span class="cov8" title="1">{
+        return 0.8
+}</span>
+
+// ProcessIntent handles LLM-based intent processing
+func (lp *LLMProcessor) ProcessIntent(ctx context.Context, text string) (*Intent, error) <span class="cov8" title="1">{
+        // LLM-based intent classification via Ollama API
+        // In a complete implementation, this would:
+        // 1. Send text to Ollama API with intent classification prompt
+        // 2. Parse structured response for intent type and entities
+        // 3. Return high-confidence intent with extracted entities
+
+        // Simplified implementation for architecture demonstration
+        return &amp;Intent{
+                Type:       IntentConversation,
+                Confidence: 0.5,
+                Entities:   make(map[string]interface{}),
+                RawText:    text,
+                Source:     ProcessorLLM,
+        }, nil
+}</span>
+
+// CanHandle checks if LLM processor can handle the text
+func (lp *LLMProcessor) CanHandle(text string) bool <span class="cov8" title="1">{
+        return true // LLM can attempt to handle any text
+}</span>
+
+// GetConfidenceThreshold returns the confidence threshold
+func (lp *LLMProcessor) GetConfidenceThreshold() float64 <span class="cov8" title="1">{
+        return 0.7
+}</span>
+
+// ProcessIntent handles cloud-based intent processing
+func (cp *CloudProcessor) ProcessIntent(ctx context.Context, text string) (*Intent, error) <span class="cov8" title="1">{
+        if !cp.enabled </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("cloud processor disabled")
+        }</span>
+
+        // Cloud-based intent processing (disabled by default for privacy)
+        // In a complete implementation, this would make secure API calls to
+        // approved cloud services only when explicitly enabled by user
+
+        <span class="cov0" title="0">return nil, fmt.Errorf("cloud processing not implemented")</span>
+}
+
+// CanHandle checks if cloud processor can handle the text
+func (cp *CloudProcessor) CanHandle(text string) bool <span class="cov8" title="1">{
+        return cp.enabled
+}</span>
+
+// GetConfidenceThreshold returns the confidence threshold
+func (cp *CloudProcessor) GetConfidenceThreshold() float64 <span class="cov8" title="1">{
+        return 0.6
+}</span>
+
+// SetCloudEnabled enables or disables cloud processing
+func (cp *CascadeProcessor) SetCloudEnabled(enabled bool) <span class="cov8" title="1">{
+        cp.enableCloud = enabled
+        cp.cloudProcessor.enabled = enabled
+
+        if enabled </span><span class="cov8" title="1">{
+                logging.Sugar.Warnw("Cloud processing enabled - data may leave local network")
+        }</span> else<span class="cov8" title="1"> {
+                logging.Sugar.Infow("Cloud processing disabled - maintaining local-first privacy")
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">/*
+ * This file is part of Loqa (https://github.com/loqalabs/loqa).
+ * Copyright (C) 2025 Loqa Labs
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.
+ */
+
+package logging
+
+import (
+        "os"
+        "strings"
+
+        "go.uber.org/zap"
+)
+
+var (
+        // Global logger instance
+        Logger *zap.Logger
+        Sugar  *zap.SugaredLogger
+)
+
+// LogConfig holds logging configuration
+type LogConfig struct {
+        Level  string // "debug", "info", "warn", "error"
+        Format string // "json", "console"
+}
+
+// Initialize sets up the global logger based on environment variables
+func Initialize() error <span class="cov8" title="1">{
+        config := LogConfig{
+                Level:  getEnvOrDefault("LOG_LEVEL", "info"),
+                Format: getEnvOrDefault("LOG_FORMAT", "console"),
+        }
+
+        return InitializeWithConfig(config)
+}</span>
+
+// InitializeWithConfig sets up the global logger with provided configuration
+func InitializeWithConfig(config LogConfig) error <span class="cov8" title="1">{
+        var zapConfig zap.Config
+
+        // Configure base settings based on format
+        switch strings.ToLower(config.Format) </span>{
+        case "json":<span class="cov8" title="1">
+                zapConfig = zap.NewProductionConfig()</span>
+        case "console":<span class="cov8" title="1">
+                zapConfig = zap.NewDevelopmentConfig()</span>
+        default:<span class="cov8" title="1">
+                zapConfig = zap.NewDevelopmentConfig()</span>
+        }
+
+        // Set log level
+        <span class="cov8" title="1">level, err := zap.ParseAtomicLevel(strings.ToLower(config.Level))
+        if err != nil </span><span class="cov8" title="1">{
+                // Default to info level if parsing fails
+                level = zap.NewAtomicLevelAt(zap.InfoLevel)
+        }</span>
+        <span class="cov8" title="1">zapConfig.Level = level
+
+        // Build logger
+        logger, err := zapConfig.Build(
+                zap.AddCallerSkip(1), // Skip the wrapper functions
+                zap.AddStacktrace(zap.ErrorLevel),
+        )
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        // Set global instances
+        <span class="cov8" title="1">Logger = logger
+        Sugar = logger.Sugar()
+
+        Sugar.Infof("🚀 Structured logging initialized (level: %s, format: %s)",
+                config.Level, config.Format)
+
+        return nil</span>
+}
+
+// Sync flushes any buffered log entries
+func Sync() <span class="cov8" title="1">{
+        if Logger != nil </span><span class="cov8" title="1">{
+                if err := Logger.Sync(); err != nil </span><span class="cov8" title="1">{
+                        // Logger.Sync() can fail on some systems, especially in tests
+                        // This is usually not critical, so we just ignore the error
+                        _ = err
+                }</span>
+        }
+}
+
+// Close cleans up the logger
+func Close() <span class="cov8" title="1">{
+        Sync()
+}</span>
+
+// Helper functions for common logging patterns
+
+// LogVoiceEvent logs a voice event with structured fields
+func LogVoiceEvent(event interface{}, message string, fields ...zap.Field) <span class="cov8" title="1">{
+        if Logger == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">baseFields := []zap.Field{
+                zap.String("component", "voice_pipeline"),
+        }
+
+        // Add event-specific fields if it's a voice event
+        switch v := event.(type) </span>{
+        case interface{ GetUUID() string }:<span class="cov8" title="1">
+                if uuid := v.GetUUID(); uuid != "" </span><span class="cov8" title="1">{
+                        baseFields = append(baseFields, zap.String("event_uuid", uuid))
+                }</span>
+        }
+
+        <span class="cov8" title="1">allFields := append(baseFields, fields...)
+        Logger.Info(message, allFields...)</span>
+}
+
+// LogAudioProcessing logs audio processing events
+func LogAudioProcessing(relayID, stage string, fields ...zap.Field) <span class="cov8" title="1">{
+        if Logger == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">baseFields := []zap.Field{
+                zap.String("component", "audio_processing"),
+                zap.String("relay_id", relayID),
+                zap.String("stage", stage),
+        }
+
+        allFields := append(baseFields, fields...)
+        Logger.Info("Audio processing", allFields...)</span>
+}
+
+// LogNATSEvent logs NATS messaging events
+func LogNATSEvent(subject, action string, fields ...zap.Field) <span class="cov8" title="1">{
+        if Logger == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">baseFields := []zap.Field{
+                zap.String("component", "messaging"),
+                zap.String("subject", subject),
+                zap.String("action", action),
+        }
+
+        allFields := append(baseFields, fields...)
+        Logger.Info("NATS event", allFields...)</span>
+}
+
+// LogDatabaseOperation logs database operations
+func LogDatabaseOperation(operation, table string, fields ...zap.Field) <span class="cov8" title="1">{
+        if Logger == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">baseFields := []zap.Field{
+                zap.String("component", "database"),
+                zap.String("operation", operation),
+                zap.String("table", table),
+        }
+
+        allFields := append(baseFields, fields...)
+        Logger.Info("Database operation", allFields...)</span>
+}
+
+// LogError logs errors with context
+func LogError(err error, message string, fields ...zap.Field) <span class="cov8" title="1">{
+        if Logger == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">baseFields := []zap.Field{
+                zap.Error(err),
+        }
+
+        allFields := append(baseFields, fields...)
+        Logger.Error(message, allFields...)</span>
+}
+
+// LogWarn logs warnings with context
+func LogWarn(message string, fields ...zap.Field) <span class="cov8" title="1">{
+        if Logger == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">Logger.Warn(message, fields...)</span>
+}
+
+// LogTTSOperation logs text-to-speech operations
+func LogTTSOperation(operation string, fields ...zap.Field) <span class="cov8" title="1">{
+        if Logger == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">baseFields := []zap.Field{
+                zap.String("component", "tts"),
+                zap.String("operation", operation),
+        }
+
+        allFields := append(baseFields, fields...)
+        Logger.Info("TTS operation", allFields...)</span>
+}
+
+// getEnvOrDefault gets environment variable or returns default
+func getEnvOrDefault(key, defaultValue string) string <span class="cov8" title="1">{
+        if value := os.Getenv(key); value != "" </span><span class="cov8" title="1">{
+                return value
+        }</span>
+        <span class="cov8" title="1">return defaultValue</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">/*
+ * This file is part of Loqa (https://github.com/loqalabs/loqa).
+ * Copyright (C) 2025 Loqa Labs
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.
+ */
+
+package security
+
+import (
+        "strings"
+)
+
+// SanitizeLogInput removes newline characters to prevent log injection attacks
+// This function should be used for all user-controlled data before logging
+func SanitizeLogInput(input string) string <span class="cov8" title="1">{
+        sanitized := strings.ReplaceAll(input, "\n", "")
+        sanitized = strings.ReplaceAll(sanitized, "\r", "")
+        return sanitized
+}</span>
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">/*
+ * This file is part of Loqa (https://github.com/loqalabs/loqa).
+ * Copyright (C) 2025 Loqa Labs
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.
+ */
+
+package server
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+        "io"
+        "net/http"
+        "strconv"
+        "strings"
+        "time"
+
+        "github.com/loqalabs/loqa-hub/internal/arbitration"
+        "github.com/loqalabs/loqa-hub/internal/config"
+        "github.com/loqalabs/loqa-hub/internal/intent"
+        "github.com/loqalabs/loqa-hub/internal/logging"
+        "github.com/loqalabs/loqa-hub/internal/tiers"
+        "github.com/loqalabs/loqa-hub/internal/transport"
+)
+
+// Server represents the HTTP/1.1 streaming Loqa hub
+type Server struct {
+        cfg    *config.Config
+        mux    *http.ServeMux
+        server *http.Server
+
+        // New architecture components
+        streamTransport *transport.StreamingTransport
+        arbitrator      *arbitration.Arbitrator
+        intentProcessor *intent.CascadeProcessor
+        tierDetector    *tiers.TierDetector
+
+        // Server context for graceful shutdown
+        ctx    context.Context
+        cancel context.CancelFunc
+}
+
+// New creates a new server with the HTTP/1.1 streaming architecture
+func New(cfg *config.Config) *Server <span class="cov0" title="0">{
+        return NewWithOptions(cfg, true)
+}</span>
+
+// NewWithOptions creates a new server with specified options
+func NewWithOptions(cfg *config.Config, enableHealthChecks bool) *Server <span class="cov8" title="1">{
+        mux := http.NewServeMux()
+
+        // Create server context
+        ctx, cancel := context.WithCancel(context.Background())
+
+        // Initialize new architecture components
+        streamTransport := transport.NewStreamingTransport()
+        arbitrator := arbitration.NewArbitrator()
+        intentProcessor := intent.NewCascadeProcessor(cfg.Streaming.OllamaURL, cfg.Streaming.Model)
+        tierDetector := tiers.NewTierDetector(cfg.STT.URL, cfg.TTS.URL, cfg.Streaming.OllamaURL, cfg.NATS.URL)
+
+        s := &amp;Server{
+                cfg:             cfg,
+                mux:             mux,
+                streamTransport: streamTransport,
+                arbitrator:      arbitrator,
+                intentProcessor: intentProcessor,
+                tierDetector:    tierDetector,
+                ctx:             ctx,
+                cancel:          cancel,
+        }
+
+        // Set up HTTP server
+        s.server = &amp;http.Server{
+                Addr:         ":" + strconv.Itoa(s.cfg.Server.Port),
+                Handler:      s.mux,
+                ReadTimeout:  s.cfg.Server.ReadTimeout,
+                WriteTimeout: s.cfg.Server.WriteTimeout,
+                IdleTimeout:  60 * time.Second,
+        }
+
+        // Configure components
+        s.configureComponents()
+
+        // Set up routes
+        s.routes()
+
+        return s
+}</span>
+
+// configureComponents sets up integration between components
+func (s *Server) configureComponents() <span class="cov8" title="1">{
+        // Set up arbitration callbacks
+        s.arbitrator.SetArbitrationCompleteCallback(s.handleArbitrationResult)
+
+        // Set up tier detection callbacks
+        s.tierDetector.SetTierChangeCallback(s.handleTierChange)
+        s.tierDetector.SetDegradationCallback(s.handleDegradation)
+
+        // Register frame handlers for streaming transport
+        s.streamTransport.RegisterFrameHandler(transport.FrameTypeWakeWord, s.handleWakeWordFrame)
+        s.streamTransport.RegisterFrameHandler(transport.FrameTypeAudioData, s.handleAudioFrame)
+        s.streamTransport.RegisterFrameHandler(transport.FrameTypeHeartbeat, s.handleHeartbeatFrame)
+        s.streamTransport.RegisterFrameHandler(transport.FrameTypeHandshake, s.handleHandshakeFrame)
+
+        logging.Sugar.Infow("🔧 Components configured",
+                "stt_url", s.cfg.STT.URL,
+                "tts_url", s.cfg.TTS.URL,
+                "llm_url", s.cfg.Streaming.OllamaURL,
+                "nats_url", s.cfg.NATS.URL)
+}</span>
+
+// Start starts the server and all background services
+func (s *Server) Start() error <span class="cov8" title="1">{
+        // Start tier detection
+        go s.tierDetector.Start(s.ctx)
+
+        logging.Sugar.Infow("🚀 Loqa Hub starting with HTTP/1.1 streaming architecture",
+                "http_port", s.cfg.Server.Port,
+                "architecture", "HTTP/1.1 Binary Streaming (Stateless)")
+
+        // Start HTTP server
+        if err := s.server.ListenAndServe(); err != nil &amp;&amp; err != http.ErrServerClosed </span><span class="cov0" title="0">{
+                return fmt.Errorf("HTTP server failed: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+// Stop gracefully shuts down the server
+func (s *Server) Stop() error <span class="cov8" title="1">{
+        logging.Sugar.Infow("🛑 Shutting down Loqa Hub")
+
+        // Cancel context to stop background services
+        s.cancel()
+
+        // Shutdown HTTP server with timeout
+        shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+        defer cancel()
+
+        if err := s.server.Shutdown(shutdownCtx); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("server shutdown failed: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">logging.Sugar.Infow("✅ Loqa Hub shut down successfully")
+        return nil</span>
+}
+
+// routes sets up HTTP routing for the new architecture
+func (s *Server) routes() <span class="cov8" title="1">{
+        // Health check
+        s.mux.HandleFunc("/health", s.handleHealth)
+
+        // New HTTP/1.1 streaming endpoints
+        s.mux.HandleFunc("/stream/puck", s.streamTransport.HandleStream)
+        s.mux.HandleFunc("/send/puck", s.streamTransport.HandleSend)
+        s.mux.HandleFunc("/api/capabilities", s.handleCapabilities)
+        s.mux.HandleFunc("/api/arbitration/stats", s.handleArbitrationStats)
+        s.mux.HandleFunc("/api/tier", s.handleTierInfo)
+
+        // Intent processing endpoints
+        s.mux.HandleFunc("/api/intent/process", s.handleIntentProcessing)
+
+        logging.Sugar.Infow("🌐 HTTP routes configured",
+                "streaming_endpoint", "/stream/puck",
+                "send_endpoint", "/send/puck",
+                "capabilities_endpoint", "/api/capabilities",
+                "arbitration_endpoint", "/api/arbitration/stats")
+}</span>
+
+// handleHealth provides system health information
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        capabilities := s.tierDetector.GetCapabilities()
+
+        health := map[string]interface{}{
+                "status":       "ok",
+                "timestamp":    time.Now(),
+                "architecture": "HTTP/1.1 Binary Streaming",
+                "tier":         capabilities.Tier,
+                "services":     capabilities.Services,
+                "degraded":     capabilities.Degraded,
+        }
+
+        if capabilities.Degraded </span><span class="cov0" title="0">{
+                health["degradation_reason"] = capabilities.DegradationReason
+        }</span>
+
+        <span class="cov8" title="1">w.Header().Set("Content-Type", "application/json")
+        if err := writeJSON(w, health); err != nil </span><span class="cov0" title="0">{
+                logging.Sugar.Errorw("Failed to write health response", "error", err)
+        }</span>
+}
+
+// handleCapabilities returns current system capabilities
+func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+                return
+        }</span>
+
+        <span class="cov8" title="1">capabilities := s.tierDetector.GetCapabilities()
+
+        w.Header().Set("Content-Type", "application/json")
+        if err := writeJSON(w, capabilities); err != nil </span><span class="cov0" title="0">{
+                logging.Sugar.Errorw("Failed to write capabilities response", "error", err)
+        }</span>
+}
+
+// handleArbitrationStats returns arbitration statistics
+func (s *Server) handleArbitrationStats(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+                return
+        }</span>
+
+        <span class="cov8" title="1">stats := s.arbitrator.GetStats()
+
+        w.Header().Set("Content-Type", "application/json")
+        if err := writeJSON(w, stats); err != nil </span><span class="cov0" title="0">{
+                logging.Sugar.Errorw("Failed to write arbitration stats", "error", err)
+        }</span>
+}
+
+// handleTierInfo returns current tier information
+func (s *Server) handleTierInfo(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+                return
+        }</span>
+
+        <span class="cov8" title="1">tier := s.tierDetector.GetTier()
+        info := map[string]interface{}{
+                "current_tier": tier,
+                "features": map[string]bool{
+                        "local_llm":           s.tierDetector.IsFeatureAvailable("local_llm"),
+                        "streaming_responses": s.tierDetector.IsFeatureAvailable("streaming_responses"),
+                        "reflex_only":         s.tierDetector.IsFeatureAvailable("reflex_only"),
+                },
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+        if err := writeJSON(w, info); err != nil </span><span class="cov0" title="0">{
+                logging.Sugar.Errorw("Failed to write tier info", "error", err)
+        }</span>
+}
+
+// handleIntentProcessing processes text through the intent cascade
+func (s *Server) handleIntentProcessing(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodPost </span><span class="cov8" title="1">{
+                http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+                return
+        }</span>
+
+        <span class="cov8" title="1">var request struct {
+                Text string `json:"text"`
+        }
+
+        if err := readJSON(r, &amp;request); err != nil </span><span class="cov8" title="1">{
+                http.Error(w, "Invalid JSON", http.StatusBadRequest)
+                return
+        }</span>
+
+        <span class="cov8" title="1">if request.Text == "" </span><span class="cov8" title="1">{
+                http.Error(w, "Text required", http.StatusBadRequest)
+                return
+        }</span>
+
+        // Process through intent cascade
+        <span class="cov8" title="1">intent, err := s.intentProcessor.ProcessIntent(r.Context(), request.Text)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Sugar.Errorw("Intent processing failed", "text", request.Text, "error", err)
+                http.Error(w, "Intent processing failed", http.StatusInternalServerError)
+                return
+        }</span>
+
+        <span class="cov8" title="1">w.Header().Set("Content-Type", "application/json")
+        if err := writeJSON(w, intent); err != nil </span><span class="cov0" title="0">{
+                logging.Sugar.Errorw("Failed to write intent response", "error", err)
+        }</span>
+}
+
+// Frame handlers for streaming transport
+
+// handleWakeWordFrame processes wake word detection frames
+func (s *Server) handleWakeWordFrame(session *transport.StreamSession, frame *transport.Frame) error <span class="cov0" title="0">{
+        detection, err := arbitration.DeserializeWakeWordDetection(frame.Data)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to deserialize wake word detection: %w", err)
+        }</span>
+
+        // Update detection with session info
+        <span class="cov0" title="0">detection.SessionID = session.ID
+        detection.PuckID = session.PuckID
+        // Convert microseconds safely, check for overflow
+        timestampMicros := frame.Timestamp
+        if timestampMicros &gt; 9223372036854775 </span><span class="cov0" title="0">{ // Max int64 / 1000
+                timestampMicros = 9223372036854775
+        }</span>
+        <span class="cov0" title="0">detection.Timestamp = time.Unix(0, int64(timestampMicros)*1000) //nolint:gosec // G115: Safe conversion, timestampMicros is validated above
+
+        // Send to arbitrator
+        return s.arbitrator.ProcessWakeWordDetection(*detection)</span>
+}
+
+// handleAudioFrame processes audio data frames
+func (s *Server) handleAudioFrame(session *transport.StreamSession, frame *transport.Frame) error <span class="cov0" title="0">{
+        // Process audio data through STT service
+        // In a complete implementation, this would:
+        // 1. Buffer audio frames until end-of-speech
+        // 2. Send audio to STT service for transcription
+        // 3. Process transcribed text through intent cascade
+        // 4. Generate response via TTS service
+        // 5. Send audio response back to puck
+
+        logging.Sugar.Debugw("Audio frame received",
+                "session_id", session.ID,
+                "puck_id", session.PuckID,
+                "data_size", len(frame.Data))
+
+        return nil
+}</span>
+
+// handleHeartbeatFrame processes heartbeat frames
+func (s *Server) handleHeartbeatFrame(session *transport.StreamSession, frame *transport.Frame) error <span class="cov0" title="0">{
+        // Heartbeat frames are handled automatically by the transport layer
+        // This is just for logging/metrics
+        logging.Sugar.Debugw("Heartbeat received",
+                "session_id", session.ID,
+                "puck_id", session.PuckID)
+
+        return nil
+}</span>
+
+// handleHandshakeFrame processes handshake frames for session establishment
+func (s *Server) handleHandshakeFrame(session *transport.StreamSession, frame *transport.Frame) error <span class="cov0" title="0">{
+        // Parse handshake data (format: "session:X;puck:Y")
+        handshakeData := string(frame.Data)
+        logging.Sugar.Infow("Handshake received",
+                "session_id", session.ID,
+                "puck_id", session.PuckID,
+                "handshake_data", handshakeData)
+
+        // Validate handshake data format and content
+        if handshakeData == "" </span><span class="cov0" title="0">{
+                return fmt.Errorf("empty handshake data")
+        }</span>
+
+        // Parse the session and puck IDs from handshake data
+        <span class="cov0" title="0">parts := map[string]string{}
+        for _, part := range strings.Split(handshakeData, ";") </span><span class="cov0" title="0">{
+                if kv := strings.Split(part, ":"); len(kv) == 2 </span><span class="cov0" title="0">{
+                        parts[kv[0]] = kv[1]
+                }</span>
+        }
+
+        // Validate that the handshake session ID matches our session
+        <span class="cov0" title="0">if handshakeSessionID, exists := parts["session"]; exists </span><span class="cov0" title="0">{
+                if handshakeSessionID != session.ID </span><span class="cov0" title="0">{
+                        logging.Sugar.Warnw("Handshake session ID mismatch",
+                                "expected", session.ID,
+                                "received", handshakeSessionID,
+                                "puck_id", session.PuckID)
+                        return fmt.Errorf("session ID mismatch in handshake")
+                }</span>
+        }
+
+        // Validate that the handshake puck ID matches our session
+        <span class="cov0" title="0">if handshakePuckID, exists := parts["puck"]; exists </span><span class="cov0" title="0">{
+                if handshakePuckID != session.PuckID </span><span class="cov0" title="0">{
+                        logging.Sugar.Warnw("Handshake puck ID mismatch",
+                                "expected", session.PuckID,
+                                "received", handshakePuckID,
+                                "session_id", session.ID)
+                        return fmt.Errorf("puck ID mismatch in handshake")
+                }</span>
+        }
+
+        <span class="cov0" title="0">logging.Sugar.Infow("Handshake validated successfully",
+                "session_id", session.ID,
+                "puck_id", session.PuckID)
+
+        return nil</span>
+}
+
+// Event handlers for system events
+
+// handleArbitrationResult processes completed arbitration
+func (s *Server) handleArbitrationResult(result *arbitration.ArbitrationResult) <span class="cov0" title="0">{
+        logging.Sugar.Infow("Arbitration result",
+                "winner_puck", result.WinnerPuckID,
+                "winner_score", result.WinnerScore,
+                "total_detections", len(result.AllDetections),
+                "decision_time", result.ArbitrationTime)
+
+        // Signal the winning puck to start voice processing
+        // In a complete implementation, this would:
+        // 1. Send activation signal to winner puck
+        // 2. Prepare audio processing pipeline for incoming frames
+        // 3. Set session state to "listening" for winner puck
+}</span>
+
+// handleTierChange responds to performance tier changes
+func (s *Server) handleTierChange(oldTier, newTier tiers.PerformanceTier) <span class="cov0" title="0">{
+        logging.Sugar.Infow("Performance tier changed",
+                "old_tier", oldTier,
+                "new_tier", newTier)
+
+        // Update intent processor configuration based on tier
+        if newTier == tiers.TierBasic </span><span class="cov0" title="0">{
+                s.intentProcessor.SetCloudEnabled(false)
+                logging.Sugar.Infow("Disabled cloud processing for Basic tier")
+        }</span>
+}
+
+// handleDegradation responds to system degradation
+func (s *Server) handleDegradation(reason string) <span class="cov8" title="1">{
+        logging.Sugar.Warnw("System degradation detected",
+                "reason", reason)
+
+        // Could trigger alerts, fallback modes, etc.
+}</span>
+
+// Helper functions
+
+func writeJSON(w http.ResponseWriter, data interface{}) error <span class="cov8" title="1">{
+        return json.NewEncoder(w).Encode(data)
+}</span>
+
+func readJSON(r *http.Request, data interface{}) error <span class="cov8" title="1">{
+        body, err := io.ReadAll(r.Body)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov8" title="1">defer func() </span><span class="cov8" title="1">{ _ = r.Body.Close() }</span>()
+
+        <span class="cov8" title="1">return json.Unmarshal(body, data)</span>
+}
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">/*
+ * This file is part of Loqa (https://github.com/loqalabs/loqa).
+ * Copyright (C) 2025 Loqa Labs
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.
+ */
+
+package tiers
+
+import (
+        "context"
+        "fmt"
+        "net/http"
+        "runtime"
+        "sync"
+        "time"
+
+        "github.com/loqalabs/loqa-hub/internal/logging"
+)
+
+// PerformanceTier represents system capability levels
+type PerformanceTier string
+
+const (
+        TierBasic    PerformanceTier = "basic"    // Reflex-only, minimal processing
+        TierStandard PerformanceTier = "standard" // Local LLM, full features
+        TierPro      PerformanceTier = "pro"      // Advanced processing, experimental features
+)
+
+// ServiceAvailability tracks availability of different services
+type ServiceAvailability struct {
+        STT  bool `json:"stt_available"`
+        TTS  bool `json:"tts_available"`
+        LLM  bool `json:"llm_available"`
+        NATS bool `json:"nats_available"`
+}
+
+// SystemCapabilities represents detected system capabilities
+type SystemCapabilities struct {
+        Tier              PerformanceTier     `json:"tier"`
+        Services          ServiceAvailability `json:"services"`
+        Hardware          HardwareInfo        `json:"hardware"`
+        Performance       PerformanceMetrics  `json:"performance"`
+        LastDetected      time.Time           `json:"last_detected"`
+        Degraded          bool                `json:"degraded"`
+        DegradationReason string              `json:"degradation_reason,omitempty"`
+}
+
+// HardwareInfo contains system hardware information
+type HardwareInfo struct {
+        CPUCores     int    `json:"cpu_cores"`
+        MemoryGB     int    `json:"memory_gb"`
+        Architecture string `json:"architecture"`
+        OS           string `json:"os"`
+}
+
+// PerformanceMetrics tracks system performance
+type PerformanceMetrics struct {
+        AvgCPUUsage    float64       `json:"avg_cpu_usage"`
+        AvgMemoryUsage float64       `json:"avg_memory_usage"`
+        STTLatency     time.Duration `json:"stt_latency"`
+        TTSLatency     time.Duration `json:"tts_latency"`
+        LLMLatency     time.Duration `json:"llm_latency"`
+        LastMeasured   time.Time     `json:"last_measured"`
+}
+
+// TierDetector handles performance tier detection and graceful degradation
+type TierDetector struct {
+        mutex        sync.RWMutex
+        capabilities SystemCapabilities
+
+        // Service URLs for health checks
+        sttURL  string
+        ttsURL  string
+        llmURL  string
+        natsURL string
+
+        // Configuration
+        detectionInterval time.Duration
+        healthTimeout     time.Duration
+        performanceWindow time.Duration
+
+        // Callbacks
+        onTierChange  func(old, new PerformanceTier)
+        onDegradation func(reason string)
+}
+
+// SLARequirements defines performance requirements for each tier
+var SLARequirements = map[PerformanceTier]struct {
+        MaxSTTLatency time.Duration
+        MaxTTSLatency time.Duration
+        MaxLLMLatency time.Duration
+        MinCPUCores   int
+        MinMemoryGB   int
+}{
+        TierBasic: {
+                MaxSTTLatency: 1000 * time.Millisecond,
+                MaxTTSLatency: 500 * time.Millisecond,
+                MaxLLMLatency: 5000 * time.Millisecond, // Reflex-only, no LLM required
+                MinCPUCores:   2,
+                MinMemoryGB:   2,
+        },
+        TierStandard: {
+                MaxSTTLatency: 800 * time.Millisecond,
+                MaxTTSLatency: 300 * time.Millisecond,
+                MaxLLMLatency: 3000 * time.Millisecond,
+                MinCPUCores:   4,
+                MinMemoryGB:   8,
+        },
+        TierPro: {
+                MaxSTTLatency: 500 * time.Millisecond,
+                MaxTTSLatency: 200 * time.Millisecond,
+                MaxLLMLatency: 1500 * time.Millisecond,
+                MinCPUCores:   8,
+                MinMemoryGB:   16,
+        },
+}
+
+// NewTierDetector creates a new tier detection system
+func NewTierDetector(sttURL, ttsURL, llmURL, natsURL string) *TierDetector <span class="cov8" title="1">{
+        td := &amp;TierDetector{
+                sttURL:            sttURL,
+                ttsURL:            ttsURL,
+                llmURL:            llmURL,
+                natsURL:           natsURL,
+                detectionInterval: 30 * time.Second,
+                healthTimeout:     5 * time.Second,
+                performanceWindow: 5 * time.Minute,
+        }
+
+        // Initialize with basic capabilities
+        td.capabilities = SystemCapabilities{
+                Tier:         TierBasic,
+                Services:     ServiceAvailability{},
+                Hardware:     td.detectHardware(),
+                Performance:  PerformanceMetrics{LastMeasured: time.Now()},
+                LastDetected: time.Now(),
+                Degraded:     false,
+        }
+
+        return td
+}</span>
+
+// Start begins continuous tier detection
+func (td *TierDetector) Start(ctx context.Context) <span class="cov8" title="1">{
+        // Perform initial detection
+        td.detectCapabilities(ctx)
+
+        // Start periodic detection
+        ticker := time.NewTicker(td.detectionInterval)
+        defer ticker.Stop()
+
+        for </span><span class="cov8" title="1">{
+                select </span>{
+                case &lt;-ctx.Done():<span class="cov8" title="1">
+                        return</span>
+                case &lt;-ticker.C:<span class="cov8" title="1">
+                        td.detectCapabilities(ctx)</span>
+                }
+        }
+}
+
+// detectCapabilities performs full system capability detection
+func (td *TierDetector) detectCapabilities(ctx context.Context) <span class="cov8" title="1">{
+        td.mutex.Lock()
+        defer td.mutex.Unlock()
+
+        oldTier := td.capabilities.Tier
+
+        // Detect service availability
+        services := td.detectServiceAvailability(ctx)
+
+        // Measure performance
+        performance := td.measurePerformance(ctx)
+
+        // Determine tier based on capabilities
+        newTier := td.determineTier(services, performance)
+
+        // Check for degradation
+        degraded, degradationReason := td.checkDegradation(services, performance, newTier)
+
+        // Update capabilities
+        td.capabilities = SystemCapabilities{
+                Tier:              newTier,
+                Services:          services,
+                Hardware:          td.capabilities.Hardware, // Hardware doesn't change
+                Performance:       performance,
+                LastDetected:      time.Now(),
+                Degraded:          degraded,
+                DegradationReason: degradationReason,
+        }
+
+        logging.Sugar.Infow("Tier detection completed",
+                "tier", newTier,
+                "degraded", degraded,
+                "stt_available", services.STT,
+                "tts_available", services.TTS,
+                "llm_available", services.LLM,
+                "stt_latency", performance.STTLatency,
+                "tts_latency", performance.TTSLatency,
+                "llm_latency", performance.LLMLatency)
+
+        // Notify tier change
+        if oldTier != newTier &amp;&amp; td.onTierChange != nil </span><span class="cov0" title="0">{
+                go td.onTierChange(oldTier, newTier)
+        }</span>
+
+        // Notify degradation
+        <span class="cov8" title="1">if degraded &amp;&amp; td.onDegradation != nil </span><span class="cov0" title="0">{
+                go td.onDegradation(degradationReason)
+        }</span>
+}
+
+// detectServiceAvailability checks availability of all services
+func (td *TierDetector) detectServiceAvailability(ctx context.Context) ServiceAvailability <span class="cov8" title="1">{
+        healthCtx, cancel := context.WithTimeout(ctx, td.healthTimeout)
+        defer cancel()
+
+        services := ServiceAvailability{}
+
+        // Check STT service
+        services.STT = td.checkServiceHealth(healthCtx, td.sttURL+"/health")
+
+        // Check TTS service
+        services.TTS = td.checkServiceHealth(healthCtx, td.ttsURL+"/health")
+
+        // Check LLM service
+        services.LLM = td.checkServiceHealth(healthCtx, td.llmURL+"/api/health")
+
+        // NATS health check would require NATS client, simplified for now
+        services.NATS = true // Assume available for architecture migration
+
+        return services
+}</span>
+
+// checkServiceHealth performs HTTP health check
+func (td *TierDetector) checkServiceHealth(ctx context.Context, url string) bool <span class="cov8" title="1">{
+        req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+        if err != nil </span><span class="cov0" title="0">{
+                return false
+        }</span>
+
+        <span class="cov8" title="1">client := &amp;http.Client{Timeout: td.healthTimeout}
+        resp, err := client.Do(req)
+        if err != nil </span><span class="cov8" title="1">{
+                return false
+        }</span>
+        <span class="cov8" title="1">defer func() </span><span class="cov8" title="1">{ _ = resp.Body.Close() }</span>()
+
+        <span class="cov8" title="1">return resp.StatusCode == http.StatusOK</span>
+}
+
+// measurePerformance measures current system performance
+func (td *TierDetector) measurePerformance(ctx context.Context) PerformanceMetrics <span class="cov8" title="1">{
+        metrics := PerformanceMetrics{
+                LastMeasured: time.Now(),
+        }
+
+        // Measure service latencies (simplified for architecture migration)
+        if td.capabilities.Services.STT </span><span class="cov8" title="1">{
+                metrics.STTLatency = td.measureServiceLatency(ctx, td.sttURL+"/health")
+        }</span>
+
+        <span class="cov8" title="1">if td.capabilities.Services.TTS </span><span class="cov8" title="1">{
+                metrics.TTSLatency = td.measureServiceLatency(ctx, td.ttsURL+"/health")
+        }</span>
+
+        <span class="cov8" title="1">if td.capabilities.Services.LLM </span><span class="cov8" title="1">{
+                metrics.LLMLatency = td.measureServiceLatency(ctx, td.llmURL+"/api/health")
+        }</span>
+
+        // CPU and memory usage would require system monitoring
+        // Simplified for architecture migration
+        <span class="cov8" title="1">metrics.AvgCPUUsage = 50.0    // Placeholder
+        metrics.AvgMemoryUsage = 60.0 // Placeholder
+
+        return metrics</span>
+}
+
+// measureServiceLatency measures response time for a service
+func (td *TierDetector) measureServiceLatency(ctx context.Context, url string) time.Duration <span class="cov8" title="1">{
+        start := time.Now()
+
+        req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+        if err != nil </span><span class="cov0" title="0">{
+                return time.Hour // High latency for errors
+        }</span>
+
+        <span class="cov8" title="1">client := &amp;http.Client{Timeout: td.healthTimeout}
+        resp, err := client.Do(req)
+        if err != nil </span><span class="cov8" title="1">{
+                return time.Hour // High latency for errors
+        }</span>
+        <span class="cov8" title="1">defer func() </span><span class="cov8" title="1">{ _ = resp.Body.Close() }</span>()
+
+        <span class="cov8" title="1">return time.Since(start)</span>
+}
+
+// determineTier calculates appropriate tier based on capabilities
+func (td *TierDetector) determineTier(services ServiceAvailability, performance PerformanceMetrics) PerformanceTier <span class="cov8" title="1">{
+        hardware := td.capabilities.Hardware
+
+        // Check if we meet Pro tier requirements
+        proReqs := SLARequirements[TierPro]
+        if hardware.CPUCores &gt;= proReqs.MinCPUCores &amp;&amp;
+                hardware.MemoryGB &gt;= proReqs.MinMemoryGB &amp;&amp;
+                services.STT &amp;&amp; services.TTS &amp;&amp; services.LLM &amp;&amp;
+                performance.STTLatency &lt;= proReqs.MaxSTTLatency &amp;&amp;
+                performance.TTSLatency &lt;= proReqs.MaxTTSLatency &amp;&amp;
+                performance.LLMLatency &lt;= proReqs.MaxLLMLatency </span><span class="cov8" title="1">{
+                return TierPro
+        }</span>
+
+        // Check if we meet Standard tier requirements
+        <span class="cov8" title="1">standardReqs := SLARequirements[TierStandard]
+        if hardware.CPUCores &gt;= standardReqs.MinCPUCores &amp;&amp;
+                hardware.MemoryGB &gt;= standardReqs.MinMemoryGB &amp;&amp;
+                services.STT &amp;&amp; services.TTS &amp;&amp; services.LLM &amp;&amp;
+                performance.STTLatency &lt;= standardReqs.MaxSTTLatency &amp;&amp;
+                performance.TTSLatency &lt;= standardReqs.MaxTTSLatency &amp;&amp;
+                performance.LLMLatency &lt;= standardReqs.MaxLLMLatency </span><span class="cov8" title="1">{
+                return TierStandard
+        }</span>
+
+        // Fall back to Basic tier
+        <span class="cov8" title="1">return TierBasic</span>
+}
+
+// checkDegradation determines if system is running in degraded mode
+func (td *TierDetector) checkDegradation(services ServiceAvailability, performance PerformanceMetrics, tier PerformanceTier) (bool, string) <span class="cov8" title="1">{
+        // Check for service failures
+        if !services.STT </span><span class="cov8" title="1">{
+                return true, "STT service unavailable"
+        }</span>
+        <span class="cov8" title="1">if !services.TTS </span><span class="cov8" title="1">{
+                return true, "TTS service unavailable"
+        }</span>
+
+        // For Standard/Pro tiers, LLM is required
+        <span class="cov8" title="1">if tier != TierBasic &amp;&amp; !services.LLM </span><span class="cov8" title="1">{
+                return true, "LLM service unavailable"
+        }</span>
+
+        // Check SLA violations
+        <span class="cov8" title="1">reqs := SLARequirements[tier]
+        if performance.STTLatency &gt; reqs.MaxSTTLatency </span><span class="cov8" title="1">{
+                return true, fmt.Sprintf("STT latency %.0fms exceeds SLA", performance.STTLatency.Seconds()*1000)
+        }</span>
+        <span class="cov8" title="1">if performance.TTSLatency &gt; reqs.MaxTTSLatency </span><span class="cov8" title="1">{
+                return true, fmt.Sprintf("TTS latency %.0fms exceeds SLA", performance.TTSLatency.Seconds()*1000)
+        }</span>
+
+        <span class="cov8" title="1">return false, ""</span>
+}
+
+// detectHardware detects system hardware capabilities
+func (td *TierDetector) detectHardware() HardwareInfo <span class="cov8" title="1">{
+        // Get basic runtime information
+        memStats := &amp;runtime.MemStats{}
+        runtime.ReadMemStats(memStats)
+
+        // Calculate memory in GB, checking for overflow
+        memoryBytes := memStats.Sys
+        memoryGB := memoryBytes / (1024 * 1024 * 1024)
+        if memoryGB &gt; 2147483647 </span><span class="cov0" title="0">{ // Max int32
+                memoryGB = 2147483647
+        }</span>
+
+        <span class="cov8" title="1">return HardwareInfo{
+                CPUCores:     runtime.NumCPU(),
+                MemoryGB:     int(memoryGB), //nolint:gosec // G115: Safe conversion after bounds check above
+                Architecture: runtime.GOARCH,
+                OS:           runtime.GOOS,
+        }</span>
+}
+
+// GetCapabilities returns current system capabilities
+func (td *TierDetector) GetCapabilities() SystemCapabilities <span class="cov8" title="1">{
+        td.mutex.RLock()
+        defer td.mutex.RUnlock()
+        return td.capabilities
+}</span>
+
+// GetTier returns current performance tier
+func (td *TierDetector) GetTier() PerformanceTier <span class="cov8" title="1">{
+        td.mutex.RLock()
+        defer td.mutex.RUnlock()
+        return td.capabilities.Tier
+}</span>
+
+// IsFeatureAvailable checks if a feature is available in current tier
+func (td *TierDetector) IsFeatureAvailable(feature string) bool <span class="cov8" title="1">{
+        tier := td.GetTier()
+
+        switch feature </span>{
+        case "local_llm":<span class="cov8" title="1">
+                return tier == TierStandard || tier == TierPro</span>
+        case "streaming_responses":<span class="cov8" title="1">
+                return tier == TierPro</span>
+        case "reflex_only":<span class="cov8" title="1">
+                return true</span> // Available in all tiers
+        default:<span class="cov8" title="1">
+                return tier != TierBasic</span> // Most features available in Standard+
+        }
+}
+
+// SetTierChangeCallback sets callback for tier changes
+func (td *TierDetector) SetTierChangeCallback(callback func(old, new PerformanceTier)) <span class="cov8" title="1">{
+        td.onTierChange = callback
+}</span>
+
+// SetDegradationCallback sets callback for degradation events
+func (td *TierDetector) SetDegradationCallback(callback func(reason string)) <span class="cov8" title="1">{
+        td.onDegradation = callback
+}</span>
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">/*
+ * This file is part of Loqa (https://github.com/loqalabs/loqa).
+ * Copyright (C) 2025 Loqa Labs
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.
+ */
+
+package transport
+
+import (
+        "bytes"
+        "encoding/binary"
+        "fmt"
+        "io"
+)
+
+// Binary Frame Protocol for HTTP/1.1 Chunked Transfer
+// Designed for ESP32 compatibility with minimal overhead
+
+// FrameType represents the type of frame being transmitted
+type FrameType uint8
+
+const (
+        // Audio frame types
+        FrameTypeAudioData FrameType = 0x01
+        FrameTypeAudioEnd  FrameType = 0x02
+        FrameTypeWakeWord  FrameType = 0x03
+
+        // Control frame types
+        FrameTypeHeartbeat   FrameType = 0x10
+        FrameTypeHandshake   FrameType = 0x11
+        FrameTypeError       FrameType = 0x12
+        FrameTypeArbitration FrameType = 0x13
+
+        // Response frame types
+        FrameTypeResponse FrameType = 0x20
+        FrameTypeStatus   FrameType = 0x21
+)
+
+// Frame represents a binary frame in the protocol
+type Frame struct {
+        Type      FrameType
+        SessionID uint32
+        Sequence  uint32
+        Timestamp uint64
+        Data      []byte
+}
+
+// FrameHeader represents the fixed-size frame header (20 bytes)
+type FrameHeader struct {
+        Magic     uint32    // 0x4C4F5141 ("LOQA")
+        Type      FrameType // Frame type (1 byte)
+        Reserved  uint8     // Reserved for future use (1 byte)
+        Length    uint16    // Data payload length (2 bytes)
+        SessionID uint32    // Session identifier (4 bytes)
+        Sequence  uint32    // Sequence number (4 bytes)
+        Timestamp uint64    // Unix timestamp microseconds (8 bytes)
+}
+
+const (
+        // Magic number for frame validation
+        FrameMagic = 0x4C4F5141 // "LOQA" in big-endian
+
+        // Frame size constraints for ESP32 compatibility
+        MaxFrameSize = 1536 // 1.5KB max frame size for ESP32 SRAM constraints
+        HeaderSize   = 24   // Fixed header size
+        MaxDataSize  = MaxFrameSize - HeaderSize
+)
+
+// Serialize converts a frame to binary format
+func (f *Frame) Serialize() ([]byte, error) <span class="cov8" title="1">{
+        if len(f.Data) &gt; MaxDataSize </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("frame data too large: %d bytes (max %d)", len(f.Data), MaxDataSize)
+        }</span>
+
+        // Check data length to prevent overflow
+        <span class="cov8" title="1">dataLen := len(f.Data)
+        if dataLen &gt; 65535 </span><span class="cov0" title="0">{ // Max uint16
+                dataLen = 65535
+        }</span>
+
+        <span class="cov8" title="1">header := FrameHeader{
+                Magic:     FrameMagic,
+                Type:      f.Type,
+                Reserved:  0,
+                Length:    uint16(dataLen), //nolint:gosec // G115: Safe conversion after bounds check above
+                SessionID: f.SessionID,
+                Sequence:  f.Sequence,
+                Timestamp: f.Timestamp,
+        }
+
+        buf := new(bytes.Buffer)
+
+        // Write header in big-endian format
+        if err := binary.Write(buf, binary.BigEndian, header); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to write frame header: %w", err)
+        }</span>
+
+        // Write data payload
+        <span class="cov8" title="1">if len(f.Data) &gt; 0 </span><span class="cov8" title="1">{
+                if _, err := buf.Write(f.Data); err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("failed to write frame data: %w", err)
+                }</span>
+        }
+
+        <span class="cov8" title="1">return buf.Bytes(), nil</span>
+}
+
+// Deserialize converts binary data to a frame
+func DeserializeFrame(data []byte) (*Frame, error) <span class="cov8" title="1">{
+        if len(data) &lt; HeaderSize </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("frame too small: %d bytes (min %d)", len(data), HeaderSize)
+        }</span>
+
+        <span class="cov8" title="1">buf := bytes.NewReader(data)
+        var header FrameHeader
+
+        if err := binary.Read(buf, binary.BigEndian, &amp;header); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to read frame header: %w", err)
+        }</span>
+
+        // Validate magic number
+        <span class="cov8" title="1">if header.Magic != FrameMagic </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("invalid frame magic: 0x%08X (expected 0x%08X)", header.Magic, FrameMagic)
+        }</span>
+
+        // Validate frame size
+        <span class="cov8" title="1">expectedSize := HeaderSize + int(header.Length)
+        if len(data) != expectedSize </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("frame size mismatch: got %d bytes, expected %d", len(data), expectedSize)
+        }</span>
+
+        <span class="cov8" title="1">frame := &amp;Frame{
+                Type:      header.Type,
+                SessionID: header.SessionID,
+                Sequence:  header.Sequence,
+                Timestamp: header.Timestamp,
+        }
+
+        // Read data payload if present
+        if header.Length &gt; 0 </span><span class="cov8" title="1">{
+                frame.Data = make([]byte, header.Length)
+                if _, err := io.ReadFull(buf, frame.Data); err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("failed to read frame data: %w", err)
+                }</span>
+        }
+
+        <span class="cov8" title="1">return frame, nil</span>
+}
+
+// parseFrameHeader parses just the header portion of frame data
+// This is used when reading frames incrementally (header first, then data)
+func parseFrameHeader(headerData []byte) (*FrameHeader, error) <span class="cov8" title="1">{
+        if len(headerData) != HeaderSize </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("invalid header size: %d bytes (expected %d)", len(headerData), HeaderSize)
+        }</span>
+
+        <span class="cov8" title="1">buf := bytes.NewReader(headerData)
+        var header FrameHeader
+
+        if err := binary.Read(buf, binary.BigEndian, &amp;header); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to read frame header: %w", err)
+        }</span>
+
+        // Validate magic number
+        <span class="cov8" title="1">if header.Magic != FrameMagic </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("invalid frame magic: 0x%08X (expected 0x%08X)", header.Magic, FrameMagic)
+        }</span>
+
+        // Validate data length doesn't exceed maximum
+        <span class="cov8" title="1">if header.Length &gt; MaxDataSize </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("frame data too large: %d bytes (max %d)", header.Length, MaxDataSize)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;header, nil</span>
+}
+
+// NewFrame creates a new frame with the specified parameters
+func NewFrame(frameType FrameType, sessionID, sequence uint32, timestamp uint64, data []byte) *Frame <span class="cov8" title="1">{
+        return &amp;Frame{
+                Type:      frameType,
+                SessionID: sessionID,
+                Sequence:  sequence,
+                Timestamp: timestamp,
+                Data:      data,
+        }
+}</span>
+
+// IsValid checks if the frame is structurally valid
+func (f *Frame) IsValid() bool <span class="cov8" title="1">{
+        return len(f.Data) &lt;= MaxDataSize
+}</span>
+
+// ValidateFrameForHubProcessing performs comprehensive frame validation
+// Based on lessons learned from puck testing - validates frames more thoroughly
+func ValidateFrameForHubProcessing(frame *Frame) error <span class="cov8" title="1">{
+        if frame == nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("frame is nil")
+        }</span>
+
+        // Basic size validation
+        <span class="cov8" title="1">if len(frame.Data) &gt; MaxDataSize </span><span class="cov8" title="1">{
+                return fmt.Errorf("frame data too large: %d bytes (max %d)", len(frame.Data), MaxDataSize)
+        }</span>
+
+        // Frame type validation
+        <span class="cov8" title="1">if !isValidFrameType(frame.Type) </span><span class="cov8" title="1">{
+                return fmt.Errorf("invalid frame type: 0x%02X", frame.Type)
+        }</span>
+
+        // Audio frame specific validation
+        <span class="cov8" title="1">if isAudioFrame(frame.Type) </span><span class="cov8" title="1">{
+                if err := validateAudioFrameData(frame.Data); err != nil </span><span class="cov8" title="1">{
+                        return fmt.Errorf("invalid audio frame: %w", err)
+                }</span>
+        }
+
+        // Session validation (basic checks)
+        <span class="cov8" title="1">if frame.SessionID == 0 </span><span class="cov0" title="0">{
+                return fmt.Errorf("invalid session ID: cannot be zero")
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+// isValidFrameType checks if the frame type is recognized
+func isValidFrameType(frameType FrameType) bool <span class="cov8" title="1">{
+        switch frameType </span>{
+        case FrameTypeAudioData, FrameTypeAudioEnd, FrameTypeWakeWord,
+                FrameTypeHeartbeat, FrameTypeHandshake, FrameTypeError, FrameTypeArbitration,
+                FrameTypeResponse, FrameTypeStatus:<span class="cov8" title="1">
+                return true</span>
+        default:<span class="cov8" title="1">
+                return false</span>
+        }
+}
+
+// isAudioFrame checks if the frame type is audio-related
+func isAudioFrame(frameType FrameType) bool <span class="cov8" title="1">{
+        switch frameType </span>{
+        case FrameTypeAudioData, FrameTypeAudioEnd, FrameTypeWakeWord:<span class="cov8" title="1">
+                return true</span>
+        default:<span class="cov8" title="1">
+                return false</span>
+        }
+}
+
+// validateAudioFrameData validates audio frame payload
+func validateAudioFrameData(data []byte) error <span class="cov8" title="1">{
+        if data == nil </span><span class="cov0" title="0">{
+                return nil // Empty audio frames are valid (silence)
+        }</span>
+
+        // Audio data should be in multiples of 2 bytes (16-bit samples)
+        <span class="cov8" title="1">if len(data)%2 != 0 </span><span class="cov8" title="1">{
+                return fmt.Errorf("audio data length %d is not multiple of 2 (16-bit samples)", len(data))
+        }</span>
+
+        // Basic audio range validation - ensure no completely invalid data
+        <span class="cov8" title="1">if len(data) &gt; 0 &amp;&amp; isAllZeros(data) &amp;&amp; len(data) &gt; 100 </span><span class="cov0" title="0">{
+                // Large all-zero frames might indicate corrupted data
+                return fmt.Errorf("suspiciously large zero-filled audio frame: %d bytes", len(data))
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+// isAllZeros checks if data is all zeros (potential corruption indicator)
+func isAllZeros(data []byte) bool <span class="cov8" title="1">{
+        for _, b := range data </span><span class="cov8" title="1">{
+                if b != 0 </span><span class="cov8" title="1">{
+                        return false
+                }</span>
+        }
+        <span class="cov0" title="0">return true</span>
+}
+
+// Size returns the total serialized size of the frame
+func (f *Frame) Size() int <span class="cov8" title="1">{
+        return HeaderSize + len(f.Data)
+}</span>
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">/*
+ * This file is part of Loqa (https://github.com/loqalabs/loqa).
+ * Copyright (C) 2025 Loqa Labs
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.
+ */
+
+package transport
+
+import (
+        "context"
+        "fmt"
+        "io"
+        "math/rand"
+        "net/http"
+        "sync"
+        "time"
+
+        "github.com/loqalabs/loqa-hub/internal/logging"
+)
+
+// StreamingTransport handles HTTP/1.1 chunked transfer with binary frames
+type StreamingTransport struct {
+        sessions map[string]*StreamSession
+        mutex    sync.RWMutex
+
+        // Handlers for different frame types
+        frameHandlers map[FrameType]FrameHandler
+
+        // Configuration
+        maxSessions       int
+        sessionTimeout    time.Duration
+        heartbeatInterval time.Duration
+
+        // Resource monitoring (learned from puck testing)
+        resourceMonitor *ResourceMonitor
+
+        // Performance monitoring (enhanced from puck testing lessons)
+        performanceMonitor *PerformanceMonitor
+
+        // Context for graceful shutdown of background goroutines
+        ctx    context.Context
+        cancel context.CancelFunc
+
+        // Metrics
+        totalConnections  uint64
+        droppedFrames     uint64
+        invalidFrames     uint64
+}
+
+// StreamSession represents an active streaming session with a puck
+type StreamSession struct {
+        ID           string
+        PuckID       string
+        StartTime    time.Time
+        LastActivity time.Time
+        Context      context.Context
+        Cancel       context.CancelFunc
+
+        // Channels for communication
+        IncomingFrames chan *Frame
+        OutgoingFrames chan *Frame
+
+        // Session state
+        mutex     sync.RWMutex
+        connected bool
+        sequence  uint32
+}
+
+// FrameHandler processes incoming frames of a specific type
+type FrameHandler func(session *StreamSession, frame *Frame) error
+
+// NewStreamingTransport creates a new HTTP/1.1 streaming transport
+func NewStreamingTransport() *StreamingTransport <span class="cov8" title="1">{
+        ctx, cancel := context.WithCancel(context.Background())
+        st := &amp;StreamingTransport{
+                sessions:           make(map[string]*StreamSession),
+                frameHandlers:      make(map[FrameType]FrameHandler),
+                maxSessions:        100, // ESP32 compatibility - conservative limit
+                sessionTimeout:     30 * time.Second,
+                heartbeatInterval:  5 * time.Second,
+                resourceMonitor:    NewResourceMonitor(),    // Add resource monitoring
+                performanceMonitor: NewPerformanceMonitor(), // Add performance monitoring
+                ctx:                ctx,
+                cancel:             cancel,
+        }
+
+        // Start background cleanup goroutine
+        go st.cleanupSessions()
+
+        // Start resource monitoring goroutine
+        go st.monitorResources()
+
+        // Start performance monitoring goroutine
+        go st.monitorPerformance()
+
+        return st
+}</span>
+
+// HandleStream processes HTTP/1.1 streaming connections
+func (st *StreamingTransport) HandleStream(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        // Validate request method
+        if r.Method != http.MethodPost </span><span class="cov8" title="1">{
+                http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+                return
+        }</span>
+
+        // Extract puck ID from headers with validation
+        <span class="cov8" title="1">puckID := r.Header.Get("X-Puck-ID")
+        if puckID == "" </span><span class="cov8" title="1">{
+                http.Error(w, "X-Puck-ID header required", http.StatusBadRequest)
+                return
+        }</span>
+
+        // Validate puck ID format (learned from puck testing)
+        <span class="cov8" title="1">if err := validatePuckID(puckID); err != nil </span><span class="cov8" title="1">{
+                logging.Sugar.Warnw("Invalid puck ID in stream request", "puck_id", puckID, "error", err)
+                http.Error(w, "Invalid X-Puck-ID format", http.StatusBadRequest)
+                return
+        }</span>
+
+        // Create session with performance tracking
+        <span class="cov8" title="1">sessionStartTime := time.Now()
+        session, err := st.createSession(puckID, r.Context())
+        if err != nil </span><span class="cov8" title="1">{
+                logging.Sugar.Errorw("Failed to create session", "puck_id", puckID, "error", err)
+                http.Error(w, "Failed to create session", http.StatusInternalServerError)
+                return
+        }</span>
+        <span class="cov8" title="1">st.performanceMonitor.RecordSessionCreated(time.Since(sessionStartTime))
+
+        logging.Sugar.Infow("New streaming session", "session_id", session.ID, "puck_id", puckID)
+
+        // Set streaming response headers
+        w.Header().Set("Content-Type", "application/octet-stream")
+        w.Header().Set("Transfer-Encoding", "chunked")
+        w.Header().Set("X-Session-ID", session.ID)
+
+        // Enable flushing for real-time streaming
+        flusher, ok := w.(http.Flusher)
+        if !ok </span><span class="cov0" title="0">{
+                http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+                return
+        }</span>
+
+        // Start bidirectional streaming
+        <span class="cov8" title="1">go st.handleIncomingStream(session, r.Body)
+        st.handleOutgoingStream(session, w, flusher)
+
+        // Cleanup on disconnect
+        st.removeSession(session.ID)
+        logging.Sugar.Infow("Session ended", "session_id", session.ID, "puck_id", puckID)</span>
+}
+
+// handleIncomingStream processes incoming frames from the puck
+func (st *StreamingTransport) handleIncomingStream(session *StreamSession, body io.ReadCloser) <span class="cov8" title="1">{
+        defer func() </span><span class="cov8" title="1">{ _ = body.Close() }</span>()
+        <span class="cov8" title="1">defer close(session.IncomingFrames)
+
+        for </span><span class="cov8" title="1">{
+                select </span>{
+                case &lt;-session.Context.Done():<span class="cov0" title="0">
+                        return</span>
+                default:<span class="cov8" title="1">
+                        // Read frame header first to determine total frame size
+                        headerBuf := make([]byte, HeaderSize)
+                        if _, err := io.ReadFull(body, headerBuf); err != nil </span><span class="cov8" title="1">{
+                                if err != io.EOF </span><span class="cov0" title="0">{
+                                        logging.Sugar.Errorw("Failed to read frame header", "session_id", session.ID, "error", err)
+                                }</span>
+                                <span class="cov8" title="1">return</span>
+                        }
+
+                        // Parse header to get data length
+                        <span class="cov8" title="1">header, err := parseFrameHeader(headerBuf)
+                        if err != nil </span><span class="cov0" title="0">{
+                                logging.Sugar.Errorw("Invalid frame header", "session_id", session.ID, "error", err)
+                                return
+                        }</span>
+
+                        // Read remaining data if present
+                        <span class="cov8" title="1">var frameData []byte
+                        if header.Length &gt; 0 </span><span class="cov8" title="1">{
+                                frameData = make([]byte, header.Length)
+                                if _, err := io.ReadFull(body, frameData); err != nil </span><span class="cov0" title="0">{
+                                        logging.Sugar.Errorw("Failed to read frame data", "session_id", session.ID, "error", err)
+                                        return
+                                }</span>
+                        }
+
+                        // Combine header and data for complete frame deserialization
+                        <span class="cov8" title="1">completeFrame := make([]byte, HeaderSize+int(header.Length))
+                        copy(completeFrame, headerBuf)
+                        if len(frameData) &gt; 0 </span><span class="cov8" title="1">{
+                                copy(completeFrame[HeaderSize:], frameData)
+                        }</span>
+
+                        // Performance tracking: start timing frame processing
+                        <span class="cov8" title="1">frameProcessStart := time.Now()
+
+                        // Deserialize complete frame
+                        frame, err := DeserializeFrame(completeFrame)
+                        if err != nil </span><span class="cov0" title="0">{
+                                st.invalidFrames++
+                                st.performanceMonitor.RecordDeserializationError()
+                                logging.Sugar.Errorw("Failed to deserialize frame", "session_id", session.ID, "error", err)
+                                return
+                        }</span>
+
+                        // Apply comprehensive frame validation (learned from puck testing)
+                        <span class="cov8" title="1">if err := ValidateFrameForHubProcessing(frame); err != nil </span><span class="cov8" title="1">{
+                                st.invalidFrames++
+                                st.performanceMonitor.RecordValidationError()
+                                logging.Sugar.Warnw("Invalid frame received",
+                                        "session_id", session.ID,
+                                        "error", err,
+                                        "frame_type", frame.Type,
+                                        "frame_size", len(completeFrame))
+                                return
+                        }</span>
+
+                        // Update session activity
+                        <span class="cov8" title="1">session.updateActivity()
+
+                        // Process frame with error tracking
+                        if handler, exists := st.frameHandlers[frame.Type]; exists </span><span class="cov8" title="1">{
+                                if err := handler(session, frame); err != nil </span><span class="cov0" title="0">{
+                                        st.performanceMonitor.RecordHandlerError()
+                                        logging.Sugar.Errorw("Frame handler error", "session_id", session.ID, "frame_type", frame.Type, "error", err)
+                                        // Track handler errors but don't terminate session
+                                }</span>
+                        } else<span class="cov0" title="0"> {
+                                logging.Sugar.Warnw("No handler for frame type", "session_id", session.ID, "frame_type", frame.Type)
+                        }</span>
+
+                        // Forward to processing pipeline with buffer monitoring
+                        <span class="cov8" title="1">select </span>{
+                        case session.IncomingFrames &lt;- frame:<span class="cov8" title="1">
+                                // Successfully queued - record processing time
+                                st.performanceMonitor.RecordFrameProcessing(time.Since(frameProcessStart))</span>
+                        case &lt;-session.Context.Done():<span class="cov0" title="0">
+                                return</span>
+                        default:<span class="cov0" title="0">
+                                // Buffer full - track dropped frames (learned from puck testing)
+                                st.droppedFrames++
+                                st.performanceMonitor.RecordBufferOverflow()
+                                logging.Sugar.Warnw("Incoming frame buffer full, dropping frame",
+                                        "session_id", session.ID,
+                                        "frame_type", frame.Type)</span>
+                                // Continue processing despite dropped frame
+                        }
+                }
+        }
+}
+
+// handleOutgoingStream sends frames to the puck
+func (st *StreamingTransport) handleOutgoingStream(session *StreamSession, w http.ResponseWriter, flusher http.Flusher) <span class="cov8" title="1">{
+        heartbeatTicker := time.NewTicker(st.heartbeatInterval)
+        defer heartbeatTicker.Stop()
+
+        for </span><span class="cov8" title="1">{
+                select </span>{
+                case &lt;-session.Context.Done():<span class="cov8" title="1">
+                        return</span>
+
+                case frame := &lt;-session.OutgoingFrames:<span class="cov8" title="1">
+                        if frame == nil </span><span class="cov0" title="0">{
+                                return // Channel closed
+                        }</span>
+
+                        <span class="cov8" title="1">data, err := frame.Serialize()
+                        if err != nil </span><span class="cov0" title="0">{
+                                logging.Sugar.Errorw("Failed to serialize frame", "session_id", session.ID, "error", err)
+                                continue</span>
+                        }
+
+                        <span class="cov8" title="1">if _, err := w.Write(data); err != nil </span><span class="cov0" title="0">{
+                                logging.Sugar.Errorw("Failed to write frame", "session_id", session.ID, "error", err)
+                                return
+                        }</span>
+
+                        <span class="cov8" title="1">flusher.Flush()</span>
+
+                case &lt;-heartbeatTicker.C:<span class="cov8" title="1">
+                        // Send heartbeat frame
+                        timestamp := time.Now().UnixMicro()
+                        if timestamp &lt; 0 </span><span class="cov0" title="0">{
+                                timestamp = 0
+                        }</span>
+                        <span class="cov8" title="1">heartbeat := NewFrame(FrameTypeHeartbeat, session.getSessionIDHash(), session.nextSequence(), uint64(timestamp), nil) //nolint:gosec // G115: Safe conversion, timestamp is validated above
+
+                        data, err := heartbeat.Serialize()
+                        if err != nil </span><span class="cov0" title="0">{
+                                logging.Sugar.Errorw("Failed to serialize heartbeat", "session_id", session.ID, "error", err)
+                                continue</span>
+                        }
+
+                        <span class="cov8" title="1">if _, err := w.Write(data); err != nil </span><span class="cov0" title="0">{
+                                logging.Sugar.Errorw("Failed to write heartbeat", "session_id", session.ID, "error", err)
+                                return
+                        }</span>
+
+                        <span class="cov8" title="1">flusher.Flush()</span>
+                }
+        }
+}
+
+// createSession creates a new streaming session with enhanced validation
+// Based on lessons learned from puck testing - validates inputs more thoroughly
+func (st *StreamingTransport) createSession(puckID string, ctx context.Context) (*StreamSession, error) <span class="cov8" title="1">{
+        st.mutex.Lock()
+        defer st.mutex.Unlock()
+
+        // Enhanced puck ID validation (learned from puck testing)
+        if err := validatePuckID(puckID); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("invalid puck ID: %w", err)
+        }</span>
+
+        // Check session limit
+        <span class="cov8" title="1">if len(st.sessions) &gt;= st.maxSessions </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("maximum sessions reached: %d", st.maxSessions)
+        }</span>
+
+        // Generate session ID with randomness to prevent collisions
+        <span class="cov8" title="1">now := time.Now()
+        //nolint:gosec // Using math/rand for non-cryptographic randomness in connection management
+        random := rand.Int63n(1000000) // Random number 0-999999
+        sessionID := fmt.Sprintf("%s-%d-%d-%d", puckID, now.Unix(), now.Nanosecond(), random)
+
+        // Create session context with timeout
+        sessionCtx, cancel := context.WithTimeout(ctx, st.sessionTimeout)
+
+        session := &amp;StreamSession{
+                ID:             sessionID,
+                PuckID:         puckID,
+                StartTime:      time.Now(),
+                LastActivity:   time.Now(),
+                Context:        sessionCtx,
+                Cancel:         cancel,
+                IncomingFrames: make(chan *Frame, 100), // Buffer for ESP32 compatibility
+                OutgoingFrames: make(chan *Frame, 100),
+                connected:      true,
+                sequence:       0,
+        }
+
+        st.sessions[sessionID] = session
+
+        // Track connection metrics
+        st.totalConnections++
+
+        return session, nil</span>
+}
+
+// validatePuckID validates puck ID format and content
+// Based on lessons learned from puck testing
+func validatePuckID(puckID string) error <span class="cov8" title="1">{
+        if puckID == "" </span><span class="cov8" title="1">{
+                return fmt.Errorf("puck ID cannot be empty")
+        }</span>
+
+        // Length validation
+        <span class="cov8" title="1">if len(puckID) &gt; 64 </span><span class="cov8" title="1">{
+                return fmt.Errorf("puck ID too long: %d characters (max 64)", len(puckID))
+        }</span>
+
+        // Character validation - only alphanumeric, hyphens, underscores
+        <span class="cov8" title="1">for _, char := range puckID </span><span class="cov8" title="1">{
+                if (char &lt; 'a' || char &gt; 'z') &amp;&amp;
+                        (char &lt; 'A' || char &gt; 'Z') &amp;&amp;
+                        (char &lt; '0' || char &gt; '9') &amp;&amp;
+                        char != '-' &amp;&amp; char != '_' </span><span class="cov8" title="1">{
+                        return fmt.Errorf("puck ID contains invalid character: %c", char)
+                }</span>
+        }
+
+        // Prevent dangerous patterns
+        <span class="cov8" title="1">if puckID == "." || puckID == ".." </span><span class="cov0" title="0">{
+                return fmt.Errorf("puck ID cannot be '.' or '..'")
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+// removeSession removes a session and cleans up resources
+func (st *StreamingTransport) removeSession(sessionID string) <span class="cov8" title="1">{
+        st.mutex.Lock()
+        defer st.mutex.Unlock()
+
+        if session, exists := st.sessions[sessionID]; exists </span><span class="cov8" title="1">{
+                // Record session duration for performance tracking
+                sessionDuration := time.Since(session.StartTime)
+                st.performanceMonitor.RecordSessionClosed(sessionDuration)
+
+                session.Cancel()
+                close(session.OutgoingFrames)
+                delete(st.sessions, sessionID)
+        }</span>
+}
+
+// cleanupInactiveSessions does a single pass of inactive session cleanup
+func (st *StreamingTransport) cleanupInactiveSessions() <span class="cov8" title="1">{
+        st.mutex.Lock()
+        defer st.mutex.Unlock()
+
+        now := time.Now()
+        for sessionID, session := range st.sessions </span><span class="cov8" title="1">{
+                if now.Sub(session.LastActivity) &gt; st.sessionTimeout </span><span class="cov8" title="1">{
+                        logging.Sugar.Infow("Cleaning up inactive session", "session_id", sessionID)
+                        session.Cancel()
+                        close(session.OutgoingFrames)
+                        delete(st.sessions, sessionID)
+                }</span>
+        }
+}
+
+// cleanupSessions removes inactive sessions (background loop)
+func (st *StreamingTransport) cleanupSessions() <span class="cov8" title="1">{
+        ticker := time.NewTicker(30 * time.Second)
+        defer ticker.Stop()
+
+        for </span><span class="cov8" title="1">{
+                select </span>{
+                case &lt;-st.ctx.Done():<span class="cov8" title="1">
+                        return</span>
+                case &lt;-ticker.C:<span class="cov0" title="0">
+                        st.cleanupInactiveSessions()</span>
+                }
+        }
+}
+
+// RegisterFrameHandler registers a handler for a specific frame type
+func (st *StreamingTransport) RegisterFrameHandler(frameType FrameType, handler FrameHandler) <span class="cov8" title="1">{
+        st.frameHandlers[frameType] = handler
+}</span>
+
+// getSession safely retrieves a session with validation
+func (st *StreamingTransport) getSession(sessionID, puckID string) (*StreamSession, error) <span class="cov8" title="1">{
+        st.mutex.RLock()
+        defer st.mutex.RUnlock()
+
+        session, exists := st.sessions[sessionID]
+        if !exists </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("session not found: %s", sessionID)
+        }</span>
+
+        // Verify puck ID matches if provided
+        <span class="cov8" title="1">if puckID != "" &amp;&amp; session.PuckID != puckID </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("puck ID mismatch: expected %s, got %s", session.PuckID, puckID)
+        }</span>
+
+        <span class="cov8" title="1">return session, nil</span>
+}
+
+// SendFrame sends a frame to a specific session
+func (st *StreamingTransport) SendFrame(sessionID string, frame *Frame) error <span class="cov8" title="1">{
+        session, err := st.getSession(sessionID, "")
+        if err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">select </span>{
+        case session.OutgoingFrames &lt;- frame:<span class="cov8" title="1">
+                return nil</span>
+        case &lt;-session.Context.Done():<span class="cov0" title="0">
+                return fmt.Errorf("session closed")</span>
+        default:<span class="cov8" title="1">
+                return fmt.Errorf("session outgoing buffer full")</span>
+        }
+}
+
+// HandleSend processes individual frame submissions from pucks
+func (st *StreamingTransport) HandleSend(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        // Validate request method
+        if r.Method != http.MethodPost </span><span class="cov0" title="0">{
+                http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+                return
+        }</span>
+
+        // Extract puck ID from query parameters
+        <span class="cov8" title="1">puckID := r.URL.Query().Get("puck_id")
+        if puckID == "" </span><span class="cov8" title="1">{
+                http.Error(w, "puck_id parameter required", http.StatusBadRequest)
+                return
+        }</span>
+
+        // Extract session ID from headers
+        <span class="cov8" title="1">sessionID := r.Header.Get("X-Session-ID")
+        if sessionID == "" </span><span class="cov8" title="1">{
+                http.Error(w, "X-Session-ID header required", http.StatusBadRequest)
+                return
+        }</span>
+
+        // Read frame data
+        <span class="cov8" title="1">frameData, err := io.ReadAll(r.Body)
+        if err != nil </span><span class="cov0" title="0">{
+                logging.Sugar.Errorw("Failed to read frame data", "puck_id", puckID, "session_id", sessionID, "error", err)
+                http.Error(w, "Failed to read frame data", http.StatusBadRequest)
+                return
+        }</span>
+
+        // Deserialize frame
+        <span class="cov8" title="1">frame, err := DeserializeFrame(frameData)
+        if err != nil </span><span class="cov0" title="0">{
+                st.invalidFrames++
+                logging.Sugar.Errorw("Failed to deserialize frame", "puck_id", puckID, "session_id", sessionID, "error", err)
+                http.Error(w, "Invalid frame data", http.StatusBadRequest)
+                return
+        }</span>
+
+        // Apply comprehensive frame validation (learned from puck testing)
+        <span class="cov8" title="1">if err := ValidateFrameForHubProcessing(frame); err != nil </span><span class="cov0" title="0">{
+                st.invalidFrames++
+                logging.Sugar.Warnw("Invalid frame received via HandleSend",
+                        "puck_id", puckID,
+                        "session_id", sessionID,
+                        "error", err,
+                        "frame_type", frame.Type,
+                        "frame_size", len(frameData))
+                http.Error(w, "Frame validation failed", http.StatusBadRequest)
+                return
+        }</span>
+
+        // Find and validate session
+        <span class="cov8" title="1">session, err := st.getSession(sessionID, puckID)
+        if err != nil </span><span class="cov8" title="1">{
+                logging.Sugar.Warnw("Session validation failed", "puck_id", puckID, "session_id", sessionID, "error", err)
+                if err.Error() == fmt.Sprintf("session not found: %s", sessionID) </span><span class="cov8" title="1">{
+                        http.Error(w, "Session not found", http.StatusNotFound)
+                }</span> else<span class="cov8" title="1"> {
+                        http.Error(w, "Session validation failed", http.StatusForbidden)
+                }</span>
+                <span class="cov8" title="1">return</span>
+        }
+
+        // Update session activity
+        <span class="cov8" title="1">session.updateActivity()
+
+        // Process frame through handlers
+        if handler, exists := st.frameHandlers[frame.Type]; exists </span><span class="cov0" title="0">{
+                if err := handler(session, frame); err != nil </span><span class="cov0" title="0">{
+                        logging.Sugar.Errorw("Frame handler error", "session_id", sessionID, "frame_type", frame.Type, "error", err)
+                }</span>
+        } else<span class="cov8" title="1"> {
+                logging.Sugar.Warnw("No handler for frame type", "session_id", sessionID, "frame_type", frame.Type)
+        }</span>
+
+        // Forward to processing pipeline with enhanced buffer monitoring
+        <span class="cov8" title="1">select </span>{
+        case session.IncomingFrames &lt;- frame:<span class="cov8" title="1"></span>
+                // Successfully queued frame
+        case &lt;-session.Context.Done():<span class="cov0" title="0">
+                http.Error(w, "Session closed", http.StatusGone)
+                return</span>
+        default:<span class="cov0" title="0">
+                // Buffer full - track dropped frames (learned from puck testing)
+                st.droppedFrames++
+                logging.Sugar.Warnw("Incoming frame buffer full via HandleSend",
+                        "session_id", sessionID,
+                        "puck_id", puckID,
+                        "frame_type", frame.Type)
+                http.Error(w, "Frame buffer full", http.StatusServiceUnavailable)
+                return</span>
+        }
+
+        // Send success response
+        <span class="cov8" title="1">w.WriteHeader(http.StatusOK)</span>
+}
+
+// Session helper methods
+func (s *StreamSession) updateActivity() <span class="cov8" title="1">{
+        s.mutex.Lock()
+        defer s.mutex.Unlock()
+        s.LastActivity = time.Now()
+}</span>
+
+func (s *StreamSession) nextSequence() uint32 <span class="cov8" title="1">{
+        s.mutex.Lock()
+        defer s.mutex.Unlock()
+        s.sequence++
+        return s.sequence
+}</span>
+
+func (s *StreamSession) getSessionIDHash() uint32 <span class="cov8" title="1">{
+        // Simple hash of session ID for frame session field
+        hash := uint32(0)
+        for _, b := range []byte(s.ID) </span><span class="cov8" title="1">{
+                hash = hash*31 + uint32(b)
+        }</span>
+        <span class="cov8" title="1">return hash</span>
+}
+
+// Public methods for external access
+
+// GetSessionIDHash returns the session ID hash for frame headers
+func (s *StreamSession) GetSessionIDHash() uint32 <span class="cov8" title="1">{
+        return s.getSessionIDHash()
+}</span>
+
+// NextSequence returns the next sequence number for frame headers
+func (s *StreamSession) NextSequence() uint32 <span class="cov8" title="1">{
+        return s.nextSequence()
+}</span>
+
+// monitorResources monitors system resources and logs warnings
+// Based on lessons learned from puck testing
+func (st *StreamingTransport) monitorResources() <span class="cov8" title="1">{
+        ticker := time.NewTicker(30 * time.Second)
+        defer ticker.Stop()
+
+        for </span><span class="cov8" title="1">{
+                select </span>{
+                case &lt;-st.ctx.Done():<span class="cov8" title="1">
+                        return</span>
+                case &lt;-ticker.C:<span class="cov0" title="0">
+                        st.mutex.RLock()
+                        activeSessions := len(st.sessions)
+                        st.mutex.RUnlock()
+
+                        st.resourceMonitor.UpdateMetrics(activeSessions)
+
+                        warnings := st.resourceMonitor.CheckResourceLeaks()
+                        if len(warnings) &gt; 0 </span><span class="cov0" title="0">{
+                                logging.Sugar.Warnw("Resource warnings detected",
+                                        "warnings", warnings,
+                                        "active_sessions", activeSessions,
+                                        "total_connections", st.totalConnections,
+                                        "dropped_frames", st.droppedFrames,
+                                        "invalid_frames", st.invalidFrames)
+
+                                // Force cleanup if we have serious issues
+                                if !st.resourceMonitor.IsHealthy() </span><span class="cov0" title="0">{
+                                        logging.Sugar.Warn("Forcing resource cleanup due to warnings")
+                                        st.resourceMonitor.ForceCleanup()
+                                }</span>
+                        }
+                }
+        }
+}
+
+// ProcessIncomingFrame processes and validates incoming frames
+// Enhanced with lessons learned from puck testing
+func (st *StreamingTransport) ProcessIncomingFrame(sessionID, puckID string, frameData []byte) error <span class="cov8" title="1">{
+        // Get session with validation
+        session, err := st.getSession(sessionID, puckID)
+        if err != nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("session validation failed: %w", err)
+        }</span>
+
+        // Deserialize frame
+        <span class="cov8" title="1">frame, err := DeserializeFrame(frameData)
+        if err != nil </span><span class="cov8" title="1">{
+                st.invalidFrames++
+                return fmt.Errorf("frame deserialization failed: %w", err)
+        }</span>
+
+        // Apply comprehensive frame validation (learned from puck testing)
+        <span class="cov8" title="1">if err := ValidateFrameForHubProcessing(frame); err != nil </span><span class="cov0" title="0">{
+                st.invalidFrames++
+                logging.Sugar.Warnw("Invalid frame received",
+                        "session_id", sessionID,
+                        "puck_id", puckID,
+                        "error", err,
+                        "frame_type", frame.Type,
+                        "frame_size", len(frameData))
+                return fmt.Errorf("frame validation failed: %w", err)
+        }</span>
+
+        // Update session activity
+        <span class="cov8" title="1">session.LastActivity = time.Now()
+
+        // Process frame with registered handler
+        if handler, exists := st.frameHandlers[frame.Type]; exists </span><span class="cov8" title="1">{
+                if err := handler(session, frame); err != nil </span><span class="cov0" title="0">{
+                        logging.Sugar.Errorw("Frame handler error",
+                                "session_id", sessionID,
+                                "puck_id", puckID,
+                                "frame_type", frame.Type,
+                                "error", err)
+                        return fmt.Errorf("frame handler error: %w", err)
+                }</span>
+        } else<span class="cov0" title="0"> {
+                logging.Sugar.Warnw("No handler registered for frame type",
+                        "frame_type", frame.Type,
+                        "session_id", sessionID)
+                return fmt.Errorf("no handler for frame type: 0x%02X", frame.Type)
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+// GetHealthStatus returns the health status including resource and performance monitoring
+func (st *StreamingTransport) GetHealthStatus() map[string]interface{} <span class="cov8" title="1">{
+        st.mutex.RLock()
+        totalConnections := st.totalConnections
+        droppedFrames := st.droppedFrames
+        invalidFrames := st.invalidFrames
+        st.mutex.RUnlock()
+
+        // Combine resource and performance monitoring
+        healthStatus := st.resourceMonitor.GetHealthStatus()
+        performanceStatus := st.performanceMonitor.GetPerformanceStatus()
+
+        // Merge performance metrics into health status
+        for key, value := range performanceStatus </span><span class="cov8" title="1">{
+                healthStatus[key] = value
+        }</span>
+
+        // Add transport-specific metrics
+        <span class="cov8" title="1">healthStatus["total_connections"] = totalConnections
+        healthStatus["dropped_frames"] = droppedFrames
+        healthStatus["invalid_frames"] = invalidFrames
+
+        return healthStatus</span>
+}
+
+// Shutdown gracefully shuts down the streaming transport
+// Implements proper cleanup patterns learned from puck testing
+func (st *StreamingTransport) Shutdown(ctx context.Context) error <span class="cov8" title="1">{
+        logging.Sugar.Info("StreamingTransport: Starting graceful shutdown")
+
+        // Cancel background goroutines first
+        st.cancel()
+
+        // Cancel all active sessions
+        st.mutex.Lock()
+        sessionIDs := make([]string, 0, len(st.sessions))
+        for sessionID := range st.sessions </span><span class="cov8" title="1">{
+                sessionIDs = append(sessionIDs, sessionID)
+        }</span>
+        <span class="cov8" title="1">st.mutex.Unlock()
+
+        // Cancel sessions with timeout
+        for _, sessionID := range sessionIDs </span><span class="cov8" title="1">{
+                st.removeSession(sessionID)
+        }</span>
+
+        // Give goroutines a brief moment to exit cleanly
+        <span class="cov8" title="1">select </span>{
+        case &lt;-ctx.Done():<span class="cov0" title="0">
+                logging.Sugar.Warn("StreamingTransport: Shutdown timeout reached")
+                return ctx.Err()</span>
+        case &lt;-time.After(50 * time.Millisecond):<span class="cov8" title="1">
+                logging.Sugar.Info("StreamingTransport: Graceful shutdown completed")</span>
+        }
+
+        // Force final cleanup
+        <span class="cov8" title="1">st.resourceMonitor.ForceCleanup()
+
+        return nil</span>
+}
+
+// monitorPerformance monitors performance metrics and logs summaries
+// Based on lessons learned from puck testing - provides actionable insights
+func (st *StreamingTransport) monitorPerformance() <span class="cov8" title="1">{
+        ticker := time.NewTicker(60 * time.Second) // Every minute
+        defer ticker.Stop()
+
+        for </span><span class="cov8" title="1">{
+                select </span>{
+                case &lt;-st.ctx.Done():<span class="cov8" title="1">
+                        return</span>
+                case &lt;-ticker.C:<span class="cov0" title="0">
+                        // Log performance summary
+                        st.performanceMonitor.LogPerformanceSummary()
+
+                        // Check for performance issues and log warnings
+                        recommendations := st.performanceMonitor.GetRecommendations()
+                        if len(recommendations) &gt; 0 </span><span class="cov0" title="0">{
+                                logging.Sugar.Warnw("Performance recommendations available",
+                                        "count", len(recommendations),
+                                        "recommendations", recommendations)
+                        }</span>
+
+                        // Check critical performance thresholds
+                        <span class="cov0" title="0">metrics := st.performanceMonitor.GetFrameProcessingMetrics()
+                        if metrics.CurrentThroughput &lt; 10 &amp;&amp; metrics.FramesProcessed &gt; 100 </span><span class="cov0" title="0">{
+                                logging.Sugar.Errorw("Critical performance issue detected",
+                                        "current_throughput", metrics.CurrentThroughput,
+                                        "frames_processed", metrics.FramesProcessed,
+                                        "buffer_overflows", metrics.BufferOverflows)
+                        }</span>
+                }
+        }
+}
+</pre>
+		
+		<pre class="file" id="file9" style="display: none">/*
+ * This file is part of Loqa (https://github.com/loqalabs/loqa).
+ * Copyright (C) 2025 Loqa Labs
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.
+ */
+
+package transport
+
+import (
+        "sync"
+        "time"
+
+        "github.com/loqalabs/loqa-hub/internal/logging"
+)
+
+// PerformanceMonitor tracks performance metrics for the transport layer
+// Based on lessons learned from puck testing - monitors key performance indicators
+type PerformanceMonitor struct {
+        mutex sync.RWMutex
+
+        // Frame processing metrics
+        framesProcessed    uint64
+        totalProcessingTime time.Duration
+        maxProcessingTime   time.Duration
+        minProcessingTime   time.Duration
+
+        // Connection metrics
+        connectionEstablishTime time.Duration
+        averageSessionDuration  time.Duration
+        sessionsCreated         uint64
+        sessionsClosed          uint64
+
+        // Error tracking
+        validationErrors   uint64
+        handlerErrors      uint64
+        bufferOverflows    uint64
+        deserializationErrors uint64
+
+        // Throughput tracking
+        lastThroughputCheck time.Time
+        framesInLastPeriod  uint64
+        currentThroughput   float64 // frames per second
+
+        // Performance recommendations
+        recommendations []string
+}
+
+// FrameProcessingMetrics holds metrics for frame processing performance
+type FrameProcessingMetrics struct {
+        FramesProcessed     uint64
+        AverageProcessingTime time.Duration
+        MaxProcessingTime   time.Duration
+        MinProcessingTime   time.Duration
+        CurrentThroughput   float64
+        ValidationErrors    uint64
+        HandlerErrors       uint64
+        BufferOverflows     uint64
+}
+
+// NewPerformanceMonitor creates a new performance monitor
+func NewPerformanceMonitor() *PerformanceMonitor <span class="cov8" title="1">{
+        return &amp;PerformanceMonitor{
+                minProcessingTime:   time.Hour, // Initialize to high value
+                lastThroughputCheck: time.Now(),
+                recommendations:     make([]string, 0),
+        }
+}</span>
+
+// RecordFrameProcessing records metrics for frame processing
+func (pm *PerformanceMonitor) RecordFrameProcessing(processingTime time.Duration) <span class="cov8" title="1">{
+        pm.mutex.Lock()
+        defer pm.mutex.Unlock()
+
+        pm.framesProcessed++
+        pm.totalProcessingTime += processingTime
+
+        // Update min/max processing times
+        if processingTime &gt; pm.maxProcessingTime </span><span class="cov8" title="1">{
+                pm.maxProcessingTime = processingTime
+        }</span>
+        <span class="cov8" title="1">if processingTime &lt; pm.minProcessingTime || pm.minProcessingTime == time.Hour </span><span class="cov8" title="1">{
+                pm.minProcessingTime = processingTime
+        }</span>
+
+        <span class="cov8" title="1">pm.framesInLastPeriod++
+
+        // Update throughput every 10 seconds
+        now := time.Now()
+        if now.Sub(pm.lastThroughputCheck) &gt;= 10*time.Second </span><span class="cov8" title="1">{
+                duration := now.Sub(pm.lastThroughputCheck).Seconds()
+                pm.currentThroughput = float64(pm.framesInLastPeriod) / duration
+                pm.framesInLastPeriod = 0
+                pm.lastThroughputCheck = now
+
+                // Generate performance recommendations
+                pm.updateRecommendations()
+        }</span>
+}
+
+// RecordSessionCreated records metrics for session creation
+func (pm *PerformanceMonitor) RecordSessionCreated(establishTime time.Duration) <span class="cov8" title="1">{
+        pm.mutex.Lock()
+        defer pm.mutex.Unlock()
+
+        pm.sessionsCreated++
+        pm.connectionEstablishTime = establishTime
+}</span>
+
+// RecordSessionClosed records metrics for session closure
+func (pm *PerformanceMonitor) RecordSessionClosed(sessionDuration time.Duration) <span class="cov8" title="1">{
+        pm.mutex.Lock()
+        defer pm.mutex.Unlock()
+
+        pm.sessionsClosed++
+
+        // Update average session duration
+        if pm.sessionsClosed &gt; 0 </span><span class="cov8" title="1">{
+                //nolint:gosec // Safe conversion for session duration calculation
+                pm.averageSessionDuration = (pm.averageSessionDuration*time.Duration(pm.sessionsClosed-1) + sessionDuration) / time.Duration(pm.sessionsClosed)
+        }</span> else<span class="cov0" title="0"> {
+                pm.averageSessionDuration = sessionDuration
+        }</span>
+}
+
+// RecordValidationError records a frame validation error
+func (pm *PerformanceMonitor) RecordValidationError() <span class="cov8" title="1">{
+        pm.mutex.Lock()
+        defer pm.mutex.Unlock()
+        pm.validationErrors++
+}</span>
+
+// RecordHandlerError records a frame handler error
+func (pm *PerformanceMonitor) RecordHandlerError() <span class="cov8" title="1">{
+        pm.mutex.Lock()
+        defer pm.mutex.Unlock()
+        pm.handlerErrors++
+}</span>
+
+// RecordBufferOverflow records a buffer overflow event
+func (pm *PerformanceMonitor) RecordBufferOverflow() <span class="cov8" title="1">{
+        pm.mutex.Lock()
+        defer pm.mutex.Unlock()
+        pm.bufferOverflows++
+}</span>
+
+// RecordDeserializationError records a frame deserialization error
+func (pm *PerformanceMonitor) RecordDeserializationError() <span class="cov8" title="1">{
+        pm.mutex.Lock()
+        defer pm.mutex.Unlock()
+        pm.deserializationErrors++
+}</span>
+
+// GetFrameProcessingMetrics returns current frame processing metrics
+func (pm *PerformanceMonitor) GetFrameProcessingMetrics() FrameProcessingMetrics <span class="cov8" title="1">{
+        pm.mutex.RLock()
+        defer pm.mutex.RUnlock()
+
+        var avgProcessingTime time.Duration
+        if pm.framesProcessed &gt; 0 </span><span class="cov8" title="1">{
+                //nolint:gosec // Safe conversion for average calculation
+                avgProcessingTime = pm.totalProcessingTime / time.Duration(pm.framesProcessed)
+        }</span>
+
+        <span class="cov8" title="1">return FrameProcessingMetrics{
+                FramesProcessed:       pm.framesProcessed,
+                AverageProcessingTime: avgProcessingTime,
+                MaxProcessingTime:     pm.maxProcessingTime,
+                MinProcessingTime:     pm.minProcessingTime,
+                CurrentThroughput:     pm.currentThroughput,
+                ValidationErrors:      pm.validationErrors,
+                HandlerErrors:         pm.handlerErrors,
+                BufferOverflows:       pm.bufferOverflows,
+        }</span>
+}
+
+// GetPerformanceStatus returns comprehensive performance status
+func (pm *PerformanceMonitor) GetPerformanceStatus() map[string]interface{} <span class="cov8" title="1">{
+        pm.mutex.RLock()
+        defer pm.mutex.RUnlock()
+
+        var avgProcessingTime time.Duration
+        if pm.framesProcessed &gt; 0 </span><span class="cov8" title="1">{
+                //nolint:gosec // Safe conversion for average calculation
+                avgProcessingTime = pm.totalProcessingTime / time.Duration(pm.framesProcessed)
+        }</span>
+
+        // Calculate error rates
+        <span class="cov8" title="1">var validationErrorRate, handlerErrorRate, deserializationErrorRate float64
+        if pm.framesProcessed &gt; 0 </span><span class="cov8" title="1">{
+                validationErrorRate = float64(pm.validationErrors) / float64(pm.framesProcessed) * 100
+                handlerErrorRate = float64(pm.handlerErrors) / float64(pm.framesProcessed) * 100
+                deserializationErrorRate = float64(pm.deserializationErrors) / float64(pm.framesProcessed) * 100
+        }</span>
+
+        <span class="cov8" title="1">return map[string]interface{}{
+                "frames_processed":          pm.framesProcessed,
+                "average_processing_time_ms": avgProcessingTime.Milliseconds(),
+                "max_processing_time_ms":    pm.maxProcessingTime.Milliseconds(),
+                "min_processing_time_ms":    pm.minProcessingTime.Milliseconds(),
+                "current_throughput_fps":    pm.currentThroughput,
+                "sessions_created":          pm.sessionsCreated,
+                "sessions_closed":           pm.sessionsClosed,
+                "active_sessions":           pm.sessionsCreated - pm.sessionsClosed,
+                "average_session_duration_s": pm.averageSessionDuration.Seconds(),
+                "validation_error_rate":     validationErrorRate,
+                "handler_error_rate":        handlerErrorRate,
+                "deserialization_error_rate": deserializationErrorRate,
+                "buffer_overflows":          pm.bufferOverflows,
+                "recommendations":           pm.recommendations,
+        }</span>
+}
+
+// updateRecommendations generates performance recommendations based on current metrics
+func (pm *PerformanceMonitor) updateRecommendations() <span class="cov8" title="1">{
+        pm.recommendations = nil // Clear previous recommendations
+
+        // Average processing time recommendations
+        var avgProcessingTime time.Duration
+        if pm.framesProcessed &gt; 0 </span><span class="cov8" title="1">{
+                //nolint:gosec // Safe conversion for average calculation
+                avgProcessingTime = pm.totalProcessingTime / time.Duration(pm.framesProcessed)
+        }</span>
+
+        <span class="cov8" title="1">if avgProcessingTime &gt; 10*time.Millisecond </span><span class="cov8" title="1">{
+                pm.recommendations = append(pm.recommendations,
+                        "Frame processing time is high (&gt;10ms). Consider optimizing frame handlers.")
+        }</span>
+
+        // Throughput recommendations
+        <span class="cov8" title="1">if pm.currentThroughput &lt; 50 &amp;&amp; pm.framesProcessed &gt; 100 </span><span class="cov0" title="0">{
+                pm.recommendations = append(pm.recommendations,
+                        "Low throughput detected (&lt;50 fps). Check for processing bottlenecks.")
+        }</span>
+
+        // Error rate recommendations
+        <span class="cov8" title="1">if pm.framesProcessed &gt; 0 </span><span class="cov8" title="1">{
+                validationErrorRate := float64(pm.validationErrors) / float64(pm.framesProcessed) * 100
+                if validationErrorRate &gt; 5 </span><span class="cov8" title="1">{
+                        pm.recommendations = append(pm.recommendations,
+                                "High frame validation error rate (&gt;5%). Check puck firmware or network issues.")
+                }</span>
+
+                <span class="cov8" title="1">handlerErrorRate := float64(pm.handlerErrors) / float64(pm.framesProcessed) * 100
+                if handlerErrorRate &gt; 1 </span><span class="cov0" title="0">{
+                        pm.recommendations = append(pm.recommendations,
+                                "High frame handler error rate (&gt;1%). Review frame handler implementations.")
+                }</span>
+        }
+
+        // Buffer overflow recommendations
+        <span class="cov8" title="1">if pm.bufferOverflows &gt; 0 </span><span class="cov8" title="1">{
+                pm.recommendations = append(pm.recommendations,
+                        "Buffer overflows detected. Consider increasing buffer sizes or improving processing speed.")
+        }</span>
+
+        // Session management recommendations
+        <span class="cov8" title="1">if pm.sessionsCreated &gt; 0 &amp;&amp; pm.sessionsClosed &gt; 0 </span><span class="cov0" title="0">{
+                sessionCloseRate := float64(pm.sessionsClosed) / float64(pm.sessionsCreated) * 100
+                if sessionCloseRate &gt; 90 </span><span class="cov0" title="0">{
+                        pm.recommendations = append(pm.recommendations,
+                                "High session close rate. Check for connection stability issues.")
+                }</span>
+        }
+
+        // Connection time recommendations
+        <span class="cov8" title="1">if pm.connectionEstablishTime &gt; 5*time.Second </span><span class="cov8" title="1">{
+                pm.recommendations = append(pm.recommendations,
+                        "Slow connection establishment (&gt;5s). Check network latency and server load.")
+        }</span>
+}
+
+// GetRecommendations returns current performance recommendations
+func (pm *PerformanceMonitor) GetRecommendations() []string <span class="cov8" title="1">{
+        pm.mutex.RLock()
+        defer pm.mutex.RUnlock()
+
+        recommendations := make([]string, len(pm.recommendations))
+        copy(recommendations, pm.recommendations)
+        return recommendations
+}</span>
+
+// LogPerformanceSummary logs a performance summary
+func (pm *PerformanceMonitor) LogPerformanceSummary() <span class="cov8" title="1">{
+        status := pm.GetPerformanceStatus()
+
+        logging.Sugar.Infow("Performance Summary",
+                "frames_processed", status["frames_processed"],
+                "avg_processing_time_ms", status["average_processing_time_ms"],
+                "current_throughput_fps", status["current_throughput_fps"],
+                "active_sessions", status["active_sessions"],
+                "validation_error_rate", status["validation_error_rate"],
+                "buffer_overflows", status["buffer_overflows"])
+
+        recommendations := pm.GetRecommendations()
+        if len(recommendations) &gt; 0 </span><span class="cov0" title="0">{
+                logging.Sugar.Warnw("Performance Recommendations", "recommendations", recommendations)
+        }</span>
+}
+
+// Reset resets all performance metrics (useful for testing)
+func (pm *PerformanceMonitor) Reset() <span class="cov8" title="1">{
+        pm.mutex.Lock()
+        defer pm.mutex.Unlock()
+
+        pm.framesProcessed = 0
+        pm.totalProcessingTime = 0
+        pm.maxProcessingTime = 0
+        pm.minProcessingTime = time.Hour
+        pm.connectionEstablishTime = 0
+        pm.averageSessionDuration = 0
+        pm.sessionsCreated = 0
+        pm.sessionsClosed = 0
+        pm.validationErrors = 0
+        pm.handlerErrors = 0
+        pm.bufferOverflows = 0
+        pm.deserializationErrors = 0
+        pm.lastThroughputCheck = time.Now()
+        pm.framesInLastPeriod = 0
+        pm.currentThroughput = 0
+        pm.recommendations = nil
+}</pre>
+		
+		<pre class="file" id="file10" style="display: none">/*
+ * This file is part of Loqa (https://github.com/loqalabs/loqa).
+ * Copyright (C) 2025 Loqa Labs
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.
+ */
+
+package transport
+
+import (
+        "fmt"
+        "runtime"
+        "sync"
+        "time"
+
+        "github.com/loqalabs/loqa-hub/internal/logging"
+)
+
+// ResourceMonitor tracks system resources and detects leaks
+// Based on lessons learned from puck testing
+type ResourceMonitor struct {
+        startGoroutines int
+        startMemory     uint64
+        maxGoroutines   int
+        maxMemoryMB     uint64
+        checkInterval   time.Duration
+        mu              sync.RWMutex
+
+        // Metrics
+        metrics ResourceMetrics
+}
+
+// ResourceMetrics holds current resource usage metrics
+type ResourceMetrics struct {
+        Goroutines      int
+        MemoryMB        uint64
+        GCCycles        uint32
+        LastGCPause     time.Duration
+        ActiveSessions  int
+        TotalFrames     uint64
+        DroppedFrames   uint64
+}
+
+// NewResourceMonitor creates a new resource monitor with baseline measurements
+func NewResourceMonitor() *ResourceMonitor <span class="cov8" title="1">{
+        var m runtime.MemStats
+        runtime.ReadMemStats(&amp;m)
+
+        rm := &amp;ResourceMonitor{
+                startGoroutines: runtime.NumGoroutine(),
+                startMemory:     m.Alloc / 1024 / 1024, // Convert to MB
+                maxGoroutines:   1000,                   // Reasonable limit for hub
+                maxMemoryMB:     500,                    // 500MB limit
+                checkInterval:   30 * time.Second,
+        }
+
+        logging.Sugar.Infow("ResourceMonitor initialized",
+                "baseline_goroutines", rm.startGoroutines,
+                "baseline_memory_mb", rm.startMemory)
+
+        return rm
+}</span>
+
+// UpdateMetrics updates current resource metrics
+func (rm *ResourceMonitor) UpdateMetrics(activeSessions int) <span class="cov8" title="1">{
+        rm.mu.Lock()
+        defer rm.mu.Unlock()
+
+        var m runtime.MemStats
+        runtime.ReadMemStats(&amp;m)
+
+        rm.metrics = ResourceMetrics{
+                Goroutines:     runtime.NumGoroutine(),
+                MemoryMB:       m.Alloc / 1024 / 1024,
+                GCCycles:       m.NumGC,
+                //nolint:gosec // Safe conversion for GC pause measurement
+                LastGCPause:    time.Duration(m.PauseNs[(m.NumGC+255)%256]),
+                ActiveSessions: activeSessions,
+        }
+}</span>
+
+// GetMetrics returns current resource metrics
+func (rm *ResourceMonitor) GetMetrics() ResourceMetrics <span class="cov8" title="1">{
+        rm.mu.RLock()
+        defer rm.mu.RUnlock()
+        return rm.metrics
+}</span>
+
+// CheckResourceLeaks detects potential resource leaks
+func (rm *ResourceMonitor) CheckResourceLeaks() []string <span class="cov8" title="1">{
+        rm.mu.RLock()
+        defer rm.mu.RUnlock()
+
+        var warnings []string
+
+        // Check goroutine leaks (learned from puck testing)
+        goroutineDiff := rm.metrics.Goroutines - rm.startGoroutines
+        if goroutineDiff &gt; 50 </span><span class="cov8" title="1">{ // More generous than puck since hub handles more connections
+                warnings = append(warnings,
+                        fmt.Sprintf("Potential goroutine leak: %d goroutines (started with %d)",
+                                rm.metrics.Goroutines, rm.startGoroutines))
+        }</span>
+
+        // Check memory leaks
+        <span class="cov8" title="1">memoryDiff := rm.metrics.MemoryMB - rm.startMemory
+        if memoryDiff &gt; 100 </span><span class="cov8" title="1">{ // 100MB increase from baseline
+                warnings = append(warnings,
+                        fmt.Sprintf("Significant memory increase: %dMB (started with %dMB)",
+                                rm.metrics.MemoryMB, rm.startMemory))
+        }</span>
+
+        // Check if we're hitting limits
+        <span class="cov8" title="1">if rm.metrics.Goroutines &gt; rm.maxGoroutines </span><span class="cov8" title="1">{
+                warnings = append(warnings,
+                        fmt.Sprintf("Goroutine limit exceeded: %d (max %d)",
+                                rm.metrics.Goroutines, rm.maxGoroutines))
+        }</span>
+
+        <span class="cov8" title="1">if rm.metrics.MemoryMB &gt; rm.maxMemoryMB </span><span class="cov8" title="1">{
+                warnings = append(warnings,
+                        fmt.Sprintf("Memory limit exceeded: %dMB (max %dMB)",
+                                rm.metrics.MemoryMB, rm.maxMemoryMB))
+        }</span>
+
+        // Check GC pressure
+        <span class="cov8" title="1">if rm.metrics.LastGCPause &gt; 100*time.Millisecond </span><span class="cov8" title="1">{
+                warnings = append(warnings,
+                        fmt.Sprintf("High GC pause detected: %v", rm.metrics.LastGCPause))
+        }</span>
+
+        <span class="cov8" title="1">return warnings</span>
+}
+
+// ForceCleanup forces garbage collection and connection cleanup
+// Similar to the cleanup patterns we developed for puck testing
+func (rm *ResourceMonitor) ForceCleanup() <span class="cov8" title="1">{
+        logging.Sugar.Info("ResourceMonitor: Forcing cleanup")
+
+        // Force garbage collection
+        runtime.GC()
+        runtime.GC() // Second GC to clean up finalizers
+
+        // Give time for cleanup
+        time.Sleep(100 * time.Millisecond)
+
+        logging.Sugar.Info("ResourceMonitor: Cleanup completed")
+}</span>
+
+// IsHealthy returns true if resource usage is within acceptable limits
+func (rm *ResourceMonitor) IsHealthy() bool <span class="cov8" title="1">{
+        warnings := rm.CheckResourceLeaks()
+        return len(warnings) == 0
+}</span>
+
+// GetHealthStatus returns a health status summary
+func (rm *ResourceMonitor) GetHealthStatus() map[string]interface{} <span class="cov8" title="1">{
+        metrics := rm.GetMetrics()
+        warnings := rm.CheckResourceLeaks()
+
+        return map[string]interface{}{
+                "healthy":           len(warnings) == 0,
+                "warnings":          warnings,
+                "goroutines":        metrics.Goroutines,
+                "memory_mb":         metrics.MemoryMB,
+                "active_sessions":   metrics.ActiveSessions,
+                "gc_cycles":         metrics.GCCycles,
+                "last_gc_pause_ns":  int64(metrics.LastGCPause),
+        }
+}</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

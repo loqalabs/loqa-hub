@@ -73,7 +73,7 @@ const (
 	FrameMagic = 0x4C4F5141 // "LOQA" in big-endian
 
 	// Frame size constraints for ESP32 compatibility
-	MaxFrameSize = 4096 // 4KB max frame size
+	MaxFrameSize = 1536 // 1.5KB max frame size for ESP32 SRAM constraints
 	HeaderSize   = 24   // Fixed header size
 	MaxDataSize  = MaxFrameSize - HeaderSize
 )
@@ -200,6 +200,90 @@ func NewFrame(frameType FrameType, sessionID, sequence uint32, timestamp uint64,
 // IsValid checks if the frame is structurally valid
 func (f *Frame) IsValid() bool {
 	return len(f.Data) <= MaxDataSize
+}
+
+// ValidateFrameForHubProcessing performs comprehensive frame validation
+// Based on lessons learned from puck testing - validates frames more thoroughly
+func ValidateFrameForHubProcessing(frame *Frame) error {
+	if frame == nil {
+		return fmt.Errorf("frame is nil")
+	}
+
+	// Basic size validation
+	if len(frame.Data) > MaxDataSize {
+		return fmt.Errorf("frame data too large: %d bytes (max %d)", len(frame.Data), MaxDataSize)
+	}
+
+	// Frame type validation
+	if !isValidFrameType(frame.Type) {
+		return fmt.Errorf("invalid frame type: 0x%02X", frame.Type)
+	}
+
+	// Audio frame specific validation
+	if isAudioFrame(frame.Type) {
+		if err := validateAudioFrameData(frame.Data); err != nil {
+			return fmt.Errorf("invalid audio frame: %w", err)
+		}
+	}
+
+	// Session validation (basic checks)
+	if frame.SessionID == 0 {
+		return fmt.Errorf("invalid session ID: cannot be zero")
+	}
+
+	return nil
+}
+
+// isValidFrameType checks if the frame type is recognized
+func isValidFrameType(frameType FrameType) bool {
+	switch frameType {
+	case FrameTypeAudioData, FrameTypeAudioEnd, FrameTypeWakeWord,
+		FrameTypeHeartbeat, FrameTypeHandshake, FrameTypeError, FrameTypeArbitration,
+		FrameTypeResponse, FrameTypeStatus:
+		return true
+	default:
+		return false
+	}
+}
+
+// isAudioFrame checks if the frame type is audio-related
+func isAudioFrame(frameType FrameType) bool {
+	switch frameType {
+	case FrameTypeAudioData, FrameTypeAudioEnd, FrameTypeWakeWord:
+		return true
+	default:
+		return false
+	}
+}
+
+// validateAudioFrameData validates audio frame payload
+func validateAudioFrameData(data []byte) error {
+	if data == nil {
+		return nil // Empty audio frames are valid (silence)
+	}
+
+	// Audio data should be in multiples of 2 bytes (16-bit samples)
+	if len(data)%2 != 0 {
+		return fmt.Errorf("audio data length %d is not multiple of 2 (16-bit samples)", len(data))
+	}
+
+	// Basic audio range validation - ensure no completely invalid data
+	if len(data) > 0 && isAllZeros(data) && len(data) > 100 {
+		// Large all-zero frames might indicate corrupted data
+		return fmt.Errorf("suspiciously large zero-filled audio frame: %d bytes", len(data))
+	}
+
+	return nil
+}
+
+// isAllZeros checks if data is all zeros (potential corruption indicator)
+func isAllZeros(data []byte) bool {
+	for _, b := range data {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // Size returns the total serialized size of the frame
